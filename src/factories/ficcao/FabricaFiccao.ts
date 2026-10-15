@@ -4,7 +4,7 @@ import { ValidacaoConsistenciaVisitor } from '../../visitors/ValidacaoConsistenc
 import { FabricaProjetoBase } from '../FabricaProjeto';
 import { NotificadorFiccao } from './NotificadorFiccao';
 
-// Ficção é o comportamento da ATVI: Projeto base, validação padrão e a estratégia escolhida sem ajuste.
+// Ficção usa o comportamento padrão: Projeto base, validação padrão e a estratégia escolhida sem ajuste.
 export class FabricaFiccao extends FabricaProjetoBase {
   readonly tipo = 'FICCAO' as const;
 

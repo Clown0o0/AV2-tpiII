@@ -4,7 +4,7 @@ import { RecomendacaoEventEmitter } from '../../src/events/RecomendacaoEventEmit
 import { AuditoriaObserver } from '../../src/events/observers/AuditoriaObserver';
 import { EmailObserver } from '../../src/events/observers/EmailObserver';
 import { MensagemInternaObserver } from '../../src/events/observers/MensagemInternaObserver';
-import { RecomendacaoService } from '../../src/services/RecomendacaoService';
+import { SistemaRecomendacao } from '../../src/services/SistemaRecomendacao';
 import { DATA_ENTREGA, DATA_REFERENCIA, elencoCompleto } from '../support/fixtures';
 import { InMemoryProfissionalRepository, InMemoryProjetoRepository, LoggerMemoria } from '../support/InMemoryRepositories';
 
@@ -19,7 +19,7 @@ function montarApp() {
   const eventos = new RecomendacaoEventEmitter().registrar(email, mensagens, auditoria);
   const app = construirApp({
     montarServico: () =>
-      new RecomendacaoService({ profissionais, projetos, eventos, relogio: () => DATA_REFERENCIA, opcoesFonte: { timeoutMs: 100, ttlMs: 0 } }),
+      new SistemaRecomendacao({ profissionais, projetos, eventos, relogio: () => DATA_REFERENCIA, opcoesFonte: { timeoutMs: 100, ttlMs: 0 } }),
   });
   return { app, profissionais, projetos, eventos, email, mensagens, auditoria };
 }

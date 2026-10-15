@@ -1,12 +1,12 @@
 import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { ErroDominio, ErroEstadoInvalido, ErroNaoEncontrado } from './domain/errors';
 import { recomendacaoRoutes } from './routes/recomendacao.routes';
-import type { RecomendacaoService } from './services/RecomendacaoService';
+import type { SistemaRecomendacao } from './services/SistemaRecomendacao';
 
 export interface OpcoesApp {
   logger?: FastifyServerOptions['logger'];
   // recebe o logger do Fastify para que os observers usem o mesmo log JSON
-  montarServico: (logger: FastifyBaseLogger) => RecomendacaoService;
+  montarServico: (logger: FastifyBaseLogger) => SistemaRecomendacao;
 }
 
 function statusHttp(erro: ErroDominio): number {
@@ -33,7 +33,7 @@ export function construirApp(opcoes: OpcoesApp): FastifyInstance {
     return reply.code(500).send({ erro: 'ERRO_INTERNO', mensagem: 'Erro interno inesperado; tente novamente.' });
   });
 
-  // health check simples (não é requisito do enunciado, só ajuda a ver se subiu)
+  // health check simples, para ver se o servidor subiu
   app.get('/health', async () => ({ status: 'ok' }));
   app.register(recomendacaoRoutes, { service });
   return app;

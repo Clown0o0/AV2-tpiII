@@ -1,5 +1,5 @@
-import { EVENTOS } from '../EventTypes';
-import type { Observador, RecomendacaoEventEmitter } from '../RecomendacaoEventEmitter';
+import { EVENTOS, type EventoRecomendacao } from '../EventTypes';
+import type { Observador } from '../RecomendacaoEventEmitter';
 import type { LoggerEstruturado } from './AuditoriaObserver';
 
 export interface MensagemInterna {
@@ -20,42 +20,56 @@ export class MensagemInternaObserver implements Observador {
     return this.caixas.get(destinatarioId) ?? [];
   }
 
-  registrar(subject: RecomendacaoEventEmitter): void {
-    subject.inscrever(EVENTOS.RECOMENDACAO_GERADA, this.nome, ({ projeto, recomendacao, profissionaisSugeridos }) => {
-      this.entregar(
-        projeto.produtorId,
-        `Nova recomendação de equipe disponível para "${projeto.titulo}"` +
-          (recomendacao.parcial ? ' (parcial: alguns papéis ficaram sem sugestão)' : ''),
-        recomendacao.id,
-      );
-      for (const profissional of profissionaisSugeridos) {
-        this.entregar(profissional.id, `Um produtor tem interesse em você para "${projeto.titulo}"`, recomendacao.id);
+  atualizar(evento: EventoRecomendacao): void {
+    switch (evento.nome) {
+      case EVENTOS.RECOMENDACAO_GERADA: {
+        const { projeto, recomendacao, profissionaisSugeridos } = evento.payload;
+        this.entregar(
+          projeto.produtorId,
+          `Nova recomendação de equipe disponível para "${projeto.titulo}"` +
+            (recomendacao.parcial ? ' (parcial: alguns papéis ficaram sem sugestão)' : ''),
+          recomendacao.id,
+        );
+        for (const profissional of profissionaisSugeridos) {
+          this.entregar(profissional.id, `Um produtor tem interesse em você para "${projeto.titulo}"`, recomendacao.id);
+        }
+        return;
       }
-    });
-    subject.inscrever(EVENTOS.MEMBRO_SUBSTITUIDO, this.nome, ({ projeto, papel, novoId, profissionalNovo, recomendacao }) => {
-      this.entregar(
-        projeto.produtorId,
-        novoId ? `Nova sugestão para o papel ${papel}` : `Não encontramos substituto para o papel ${papel}`,
-        recomendacao.id,
-      );
-      if (profissionalNovo) {
-        this.entregar(profissionalNovo.id, `Um produtor tem interesse em você para "${projeto.titulo}" (${papel})`, recomendacao.id);
+      case EVENTOS.MEMBRO_SUBSTITUIDO: {
+        const { projeto, papel, novoId, profissionalNovo, recomendacao } = evento.payload;
+        this.entregar(
+          projeto.produtorId,
+          novoId ? `Nova sugestão para o papel ${papel}` : `Não encontramos substituto para o papel ${papel}`,
+          recomendacao.id,
+        );
+        if (profissionalNovo) {
+          this.entregar(profissionalNovo.id, `Um produtor tem interesse em você para "${projeto.titulo}" (${papel})`, recomendacao.id);
+        }
+        return;
       }
-    });
-    subject.inscrever(EVENTOS.INTERESSE_PRODUTOR, this.nome, ({ projeto, convite }) =>
-      this.entregar(convite.profissionalId, `Você recebeu um convite para "${projeto.titulo}" (${convite.papel})`, convite.id),
-    );
-    subject.inscrever(EVENTOS.CONVITE_ACEITO, this.nome, ({ projeto, convite }) =>
-      this.entregar(projeto.produtorId, `Convite para ${convite.papel} foi aceito`, convite.id),
-    );
-    subject.inscrever(EVENTOS.CONVITE_RECUSADO, this.nome, ({ projeto, convite }) =>
-      this.entregar(projeto.produtorId, `Convite para ${convite.papel} foi recusado`, convite.id),
-    );
-    subject.inscrever(EVENTOS.EQUIPE_FINALIZADA, this.nome, ({ projeto, recomendacao }) => {
-      for (const membro of recomendacao.membrosAtivos()) {
-        this.entregar(membro.profissionalId, `A equipe de "${projeto.titulo}" está completa. Bem-vindo(a)!`, recomendacao.id);
+      case EVENTOS.INTERESSE_PRODUTOR: {
+        const { projeto, convite } = evento.payload;
+        this.entregar(convite.profissionalId, `Você recebeu um convite para "${projeto.titulo}" (${convite.papel})`, convite.id);
+        return;
       }
-    });
+      case EVENTOS.CONVITE_ACEITO: {
+        const { projeto, convite } = evento.payload;
+        this.entregar(projeto.produtorId, `Convite para ${convite.papel} foi aceito`, convite.id);
+        return;
+      }
+      case EVENTOS.CONVITE_RECUSADO: {
+        const { projeto, convite } = evento.payload;
+        this.entregar(projeto.produtorId, `Convite para ${convite.papel} foi recusado`, convite.id);
+        return;
+      }
+      case EVENTOS.EQUIPE_FINALIZADA: {
+        const { projeto, recomendacao } = evento.payload;
+        for (const membro of recomendacao.membrosAtivos()) {
+          this.entregar(membro.profissionalId, `A equipe de "${projeto.titulo}" está completa. Bem-vindo(a)!`, recomendacao.id);
+        }
+        return;
+      }
+    }
   }
 
   private entregar(destinatarioId: string, texto: string, referencia: string): void {

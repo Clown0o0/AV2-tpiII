@@ -1,13 +1,13 @@
 import { ErroValidacao } from '../../../src/domain/errors';
 import { FabricaFiccao } from '../../../src/factories/ficcao/FabricaFiccao';
-import { ComposicaoEquipeDefault } from '../../../src/orchestration/ComposicaoEquipeDefault';
+import { OrquestradorPadrao } from '../../../src/orchestration/OrquestradorPadrao';
 import {
-  ComposicaoEquipeTemplate,
+  OrquestradorEquipe,
   type EntradaComposicao,
   type EntradaNormalizada,
   type RankingPapel,
   type ResultadoComposicao,
-} from '../../../src/orchestration/ComposicaoEquipeTemplate';
+} from '../../../src/orchestration/OrquestradorEquipe';
 import { CossenoStrategy } from '../../../src/strategies/CossenoStrategy';
 import { EstrategiaRegistry } from '../../../src/strategies/EstrategiaRegistry';
 import {
@@ -20,18 +20,18 @@ import {
 } from '../../support/fixtures';
 
 /** Subclasse instrumentada: cada etapa registra sua execução e pode ter comportamento próprio. */
-class ComposicaoInstrumentada extends ComposicaoEquipeTemplate {
+class ComposicaoInstrumentada extends OrquestradorEquipe {
   readonly etapas: string[] = [];
 
   constructor(private readonly variante: 'A' | 'B') {
     super();
   }
 
-  protected validarRestricoesOrcamentarias(_entrada: EntradaComposicao): void {
+  protected validarRestricoes(_entrada: EntradaComposicao): void {
     this.etapas.push('validar');
   }
 
-  protected normalizarEntrada(entrada: EntradaComposicao): EntradaNormalizada {
+  protected normalizarDados(entrada: EntradaComposicao): EntradaNormalizada {
     this.etapas.push('normalizar');
     return {
       projeto: entrada.projeto,
@@ -77,8 +77,8 @@ describe('Template Method — fluxo principal imutável', () => {
   it('executa sempre validar -> normalizar -> aplicar -> posProcessar, mesmo com etapas diferentes', () => {
     const a = new ComposicaoInstrumentada('A');
     const b = new ComposicaoInstrumentada('B');
-    const resultadoA = a.compor(entrada());
-    const resultadoB = b.compor(entrada());
+    const resultadoA = a.orquestrar(entrada());
+    const resultadoB = b.orquestrar(entrada());
 
     const fluxo = ['validar', 'normalizar', 'aplicar', 'posProcessar'];
     expect(a.etapas).toEqual(fluxo);
@@ -91,37 +91,37 @@ describe('Template Method — fluxo principal imutável', () => {
 
   it('interrompe o fluxo quando a validação falha (nenhuma etapa posterior roda)', () => {
     class FalhaNaValidacao extends ComposicaoInstrumentada {
-      protected override validarRestricoesOrcamentarias(e: EntradaComposicao): void {
-        super.validarRestricoesOrcamentarias(e);
+      protected override validarRestricoes(e: EntradaComposicao): void {
+        super.validarRestricoes(e);
         throw new ErroValidacao('orçamento insuficiente');
       }
     }
     const composicao = new FalhaNaValidacao('A');
-    expect(() => composicao.compor(entrada())).toThrow(ErroValidacao);
+    expect(() => composicao.orquestrar(entrada())).toThrow(ErroValidacao);
     expect(composicao.etapas).toEqual(['validar']);
   });
 
-  it('proíbe subclasses de sobrescrever compor()', () => {
+  it('proíbe subclasses de sobrescrever orquestrar()', () => {
     class Rebelde extends ComposicaoInstrumentada {
-      override compor(): ResultadoComposicao {
+      override orquestrar(): ResultadoComposicao {
         throw new Error('não deveria executar');
       }
     }
-    expect(() => new Rebelde('A')).toThrow(/não pode sobrescrever o fluxo compor/);
+    expect(() => new Rebelde('A')).toThrow(/não pode sobrescrever o fluxo orquestrar/);
   });
 
-  it('não permite reatribuir compor no protótipo do template', () => {
+  it('não permite reatribuir orquestrar no protótipo do template', () => {
     expect(() => {
-      (ComposicaoEquipeTemplate.prototype as unknown as { compor: unknown }).compor = () => null;
+      (OrquestradorEquipe.prototype as unknown as { orquestrar: unknown }).orquestrar = () => null;
     }).toThrow(TypeError);
   });
 });
 
-describe('ComposicaoEquipeDefault', () => {
-  const composicao = new ComposicaoEquipeDefault(new FabricaFiccao());
+describe('OrquestradorPadrao', () => {
+  const composicao = new OrquestradorPadrao(new FabricaFiccao());
 
   it('seleciona um profissional por papel dentro do orçamento, na ordem de papéis do projeto', () => {
-    const resultado = composicao.compor(entrada());
+    const resultado = composicao.orquestrar(entrada());
     expect(resultado.selecionados.map((s) => s.papel)).toEqual(['DIRETOR', 'DIRETOR_FOTOGRAFIA', 'EDITOR']);
     expect(resultado.selecionados.map((s) => s.escolhido.profissional.id)).toEqual([
       'DIRETOR-top',
@@ -135,7 +135,7 @@ describe('ComposicaoEquipeDefault', () => {
 
   it('reserva orçamento para os papéis seguintes, preferindo alternativa mais barata quando necessário', () => {
     // Orçamento curto: o diretor "top" (20000) + fotógrafo mais barato (6500) + editor mais barato (7500) = 34000 > 30000.
-    const resultado = composicao.compor(entrada({ projeto: criarProjeto({ orcamentoTotal: 30000 }) }));
+    const resultado = composicao.orquestrar(entrada({ projeto: criarProjeto({ orcamentoTotal: 30000 }) }));
     expect(resultado.papeisSemCandidato).toEqual([]);
     expect(resultado.custoTotal).toBeLessThanOrEqual(30000);
     expect(resultado.selecionados.find((s) => s.papel === 'DIRETOR')?.escolhido.profissional.id).toBe('DIRETOR-junior');
@@ -151,7 +151,7 @@ describe('ComposicaoEquipeDefault', () => {
     });
     const diretor = criarProfissional({ id: 'dir', precoMin: 25000 });
     const editor = criarProfissional({ id: 'ed', especialidades: ['EDITOR'], precoMin: 10000 });
-    const resultado = composicao.compor(entrada({ projeto, profissionais: [diretor, editor] }));
+    const resultado = composicao.orquestrar(entrada({ projeto, profissionais: [diretor, editor] }));
     expect(resultado.selecionados.map((s) => s.escolhido.profissional.id)).toEqual(['dir']);
     expect(resultado.papeisSemCandidato).toEqual(['EDITOR']);
     expect(resultado.parcial).toBe(true);
@@ -160,7 +160,7 @@ describe('ComposicaoEquipeDefault', () => {
   });
 
   it('marca como parcial papéis sem nenhum profissional elegível', () => {
-    const resultado = composicao.compor(
+    const resultado = composicao.orquestrar(
       entrada({ profissionais: elencoCompleto().filter((p) => !p.atuaComo('EDITOR')) }),
     );
     expect(resultado.parcial).toBe(true);
@@ -182,7 +182,7 @@ describe('ComposicaoEquipeDefault', () => {
         { papel: 'EDITOR', peso: 1 },
       ],
     });
-    const resultado = composicao.compor(
+    const resultado = composicao.orquestrar(
       entrada({
         projeto,
         profissionais: [ocupado, excluido, fixo, livre, livre],
@@ -205,23 +205,23 @@ describe('ComposicaoEquipeDefault', () => {
         { papel: 'EDITOR', peso: 1 },
       ],
     });
-    const resultado = composicao.compor(entrada({ projeto, profissionais: [multi] }));
+    const resultado = composicao.orquestrar(entrada({ projeto, profissionais: [multi] }));
     expect(resultado.selecionados.map((s) => s.escolhido.profissional.id)).toEqual(['multi']);
     expect(resultado.papeisSemCandidato).toEqual(['EDITOR']);
   });
 
   it('valida prazo, papéis alvo e custo dos membros fixos', () => {
-    expect(() => composicao.compor(entrada({ dataReferencia: DATA_ENTREGA }))).toThrow(/data de entrega/);
-    expect(() => composicao.compor(entrada({ papeisAlvo: ['SONOPLASTA'] }))).toThrow(/não é requerido/);
+    expect(() => composicao.orquestrar(entrada({ dataReferencia: DATA_ENTREGA }))).toThrow(/data de entrega/);
+    expect(() => composicao.orquestrar(entrada({ papeisAlvo: ['SONOPLASTA'] }))).toThrow(/não é requerido/);
     expect(() =>
-      composicao.compor(entrada({ membrosFixos: [{ papel: 'EDITOR', profissionalId: 'x', custo: 999999 }] })),
+      composicao.orquestrar(entrada({ membrosFixos: [{ papel: 'EDITOR', profissionalId: 'x', custo: 999999 }] })),
     ).toThrow(/excede o orçamento/);
   });
 
   it('respeita o limite de alternativas configurado', () => {
     const muitos = Array.from({ length: 8 }, (_, i) => criarProfissional({ id: `d${i}`, precoMin: 1000 + i }));
     const projeto = criarProjeto({ papeis: [{ papel: 'DIRETOR', peso: 1 }] });
-    const resultado = new ComposicaoEquipeDefault(new FabricaFiccao(), { limiteAlternativas: 5 }).compor(entrada({ projeto, profissionais: muitos }));
+    const resultado = new OrquestradorPadrao(new FabricaFiccao(), { limiteAlternativas: 5 }).orquestrar(entrada({ projeto, profissionais: muitos }));
     expect(resultado.selecionados[0]?.alternativas).toHaveLength(5);
   });
 });
@@ -245,7 +245,7 @@ describe('Escala: 10.000 profissionais', () => {
     'estratégia %s compõe a equipe em menos de 2 segundos',
     (_tipo, estrategia) => {
       const inicio = performance.now();
-      const resultado = new ComposicaoEquipeDefault(new FabricaFiccao()).compor({
+      const resultado = new OrquestradorPadrao(new FabricaFiccao()).orquestrar({
         projeto,
         profissionais,
         estrategia,

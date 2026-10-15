@@ -80,7 +80,8 @@ describe('Observer — observadores reagem de forma independente ao mesmo evento
     const { emitter, email, mensagens, auditoria, falhas } = montar();
     const quebrado: Observador = {
       nome: 'quebrado',
-      registrar: (s) => s.inscrever(EVENTOS.RECOMENDACAO_GERADA, 'quebrado', () => Promise.reject(new Error('SMTP fora'))),
+      atualizar: (evento) =>
+        evento.nome === EVENTOS.RECOMENDACAO_GERADA ? Promise.reject(new Error('SMTP fora')) : undefined,
     };
     emitter.registrar(quebrado);
 
@@ -105,8 +106,11 @@ describe('Observer — observadores reagem de forma independente ao mesmo evento
     const emitter = new RecomendacaoEventEmitter(() => {
       throw new Error('tratador quebrado');
     });
-    emitter.inscrever(EVENTOS.MEMBRO_REJEITADO, 'x', () => {
-      throw new Error('falhou');
+    emitter.adicionar({
+      nome: 'x',
+      atualizar: () => {
+        throw new Error('falhou');
+      },
     });
     emitter.publicar(EVENTOS.MEMBRO_REJEITADO, {
       ator: { tipo: 'PRODUTOR', id: 'p' },
@@ -197,15 +201,19 @@ describe('Observer — observadores reagem de forma independente ao mesmo evento
     expect(logger.linhas.filter((l) => l.objeto.auditoria === true)).toHaveLength(5);
   });
 
-  it('permite cancelar inscrição e informa a quantidade de inscritos', async () => {
+  it('permite remover observador e informa a quantidade de observadores', async () => {
     const emitter = new RecomendacaoEventEmitter();
     const recebidos: string[] = [];
-    const cancelar = emitter.inscrever(EVENTOS.PROJETO_ALTERADO, 'teste', (e) => {
-      recebidos.push(e.projetoId);
-    });
-    expect(emitter.quantidadeInscritos(EVENTOS.PROJETO_ALTERADO)).toBe(1);
-    cancelar();
-    expect(emitter.quantidadeInscritos(EVENTOS.PROJETO_ALTERADO)).toBe(0);
+    const teste: Observador = {
+      nome: 'teste',
+      atualizar: (evento) => {
+        if (evento.nome === EVENTOS.PROJETO_ALTERADO) recebidos.push(evento.payload.projetoId);
+      },
+    };
+    emitter.adicionar(teste);
+    expect(emitter.quantidadeObservadores()).toBe(1);
+    emitter.remover(teste);
+    expect(emitter.quantidadeObservadores()).toBe(0);
     emitter.publicar(EVENTOS.PROJETO_ALTERADO, {
       ...eventoRecomendacao(),
       alteracao: { variacaoOrcamento: 0, variacaoPrazoDias: 0, estrategiaAlterada: false },

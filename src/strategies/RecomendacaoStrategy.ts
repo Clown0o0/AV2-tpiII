@@ -2,7 +2,7 @@ import type { Profissional } from '../domain/entities/Profissional';
 import type { PapelTecnico, Projeto, TipoEstrategia } from '../domain/entities/Projeto';
 import type { VetorCompetencias } from '../domain/entities/Competencia';
 
-// Informações que a estratégia recebe para ranquear os candidatos de um papel.
+// Informações que a estratégia recebe para recomendar os candidatos de um papel.
 export interface ContextoEstrategia {
   projeto: Projeto;
   papel: PapelTecnico;
@@ -26,7 +26,7 @@ export interface CandidatoPontuado {
 export interface RecomendacaoStrategy {
   readonly tipo: TipoEstrategia;
   readonly descricao: string;
-  ranquear(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[];
+  recomendar(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[];
 }
 
 // Ordenação determinística: score desc, preço mínimo asc, id asc.

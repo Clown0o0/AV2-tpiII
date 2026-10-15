@@ -8,7 +8,7 @@ import {
   type RecomendacaoStrategy,
 } from './RecomendacaoStrategy';
 
-// Peso escolhido por nós: o score final é 80% o da estratégia base e 20% a afinidade com o tipo.
+// Peso da afinidade: o score final é 80% o da estratégia base e 20% a afinidade com o tipo.
 export const PESO_AFINIDADE_TIPO = 0.2;
 
 // Decorator da estratégia escolhida pelo produtor: mantém as regras dela (inclusive os descartes)
@@ -27,9 +27,9 @@ export abstract class RecomendadorPorTipo implements RecomendacaoStrategy {
     return this.base.descricao;
   }
 
-  ranquear(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[] {
+  recomendar(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[] {
     return ordenarRanking(
-      this.base.ranquear(candidatos, contexto).map((candidato) => {
+      this.base.recomendar(candidatos, contexto).map((candidato) => {
         const afinidade = this.afinidade(candidato.profissional);
         return {
           profissional: candidato.profissional,

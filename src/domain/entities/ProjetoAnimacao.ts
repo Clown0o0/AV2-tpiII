@@ -4,7 +4,7 @@ import { Projeto, type AjustesProjeto, type DadosProjeto, type DetalhesProjeto }
 export const TECNICAS_ANIMACAO = ['2D', '3D', 'STOP_MOTION'] as const;
 export type TecnicaAnimacao = (typeof TECNICAS_ANIMACAO)[number];
 
-// Valores padrão escolhidos por nós (o enunciado não define atributos da animação).
+// Valores padrão dos atributos da animação.
 export const TECNICA_PADRAO: TecnicaAnimacao = '2D';
 export const QUADROS_POR_SEGUNDO_PADRAO = 24;
 

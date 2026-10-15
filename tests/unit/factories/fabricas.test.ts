@@ -50,7 +50,7 @@ const CLASSES_DE_TIPO = [
 const baseFixa: RecomendacaoStrategy = {
   tipo: 'ORCAMENTO_REDUZIDO',
   descricao: 'base de teste',
-  ranquear: (candidatos) => candidatos.map((profissional) => ({ profissional, score: 0.5, detalhes: { base: 1 } })),
+  recomendar: (candidatos) => candidatos.map((profissional) => ({ profissional, score: 0.5, detalhes: { base: 1 } })),
 };
 
 function contexto(universo: Profissional[]): ContextoEstrategia {
@@ -106,7 +106,7 @@ describe('Recomendadores por tipo (decoram a estratégia escolhida)', () => {
     [FabricaPublicitario, 'publicitario'],
   ] as const)('%p põe no topo quem tem as competências do tipo', (Fabrica, esperado) => {
     const recomendador = new Fabrica().comEstrategia(baseFixa).criarRecomendador();
-    const ranking = recomendador.ranquear(todos, contexto(todos));
+    const ranking = recomendador.recomendar(todos, contexto(todos));
     expect(ranking[0]?.profissional.id).toBe(esperado);
     // só o especialista do tipo ganha afinidade; o generalista fica com 80% do score base
     expect(ranking.find((c) => c.profissional.id === 'generalista')?.score).toBe(0.4);
@@ -119,8 +119,8 @@ describe('Recomendadores por tipo (decoram a estratégia escolhida)', () => {
   });
 
   it('o score fica em [0,1] e a ordenação é determinística mesmo com base no máximo', () => {
-    const maximo: RecomendacaoStrategy = { ...baseFixa, ranquear: (c) => c.map((profissional) => ({ profissional, score: 1, detalhes: {} })) };
-    const ranking = new FabricaAnimacao().comEstrategia(maximo).criarRecomendador().ranquear(todos, contexto(todos));
+    const maximo: RecomendacaoStrategy = { ...baseFixa, recomendar: (c) => c.map((profissional) => ({ profissional, score: 1, detalhes: {} })) };
+    const ranking = new FabricaAnimacao().comEstrategia(maximo).criarRecomendador().recomendar(todos, contexto(todos));
     expect(ranking.map((c) => c.score)).toEqual([1, 0.8, 0.8, 0.8]);
     expect(ranking.map((c) => c.profissional.id)).toEqual(['animador', 'documentarista', 'generalista', 'publicitario']);
   });
@@ -128,7 +128,7 @@ describe('Recomendadores por tipo (decoram a estratégia escolhida)', () => {
   it('respeita os descartes da estratégia base', () => {
     const caro = criarProfissional({ id: 'caro', precoMin: 999999, competencias: { vfx: 1 } });
     const recomendador = new FabricaAnimacao().comEstrategia(new OrcamentoReduzidoStrategy()).criarRecomendador();
-    expect(recomendador.ranquear([caro], { ...contexto([caro]), orcamentoPapel: 1000 })).toEqual([]);
+    expect(recomendador.recomendar([caro], { ...contexto([caro]), orcamentoPapel: 1000 })).toEqual([]);
   });
 });
 
@@ -268,12 +268,12 @@ describe('Notificadores por tipo', () => {
     expect(enviadas('PUBLICITARIO')[2]?.texto).toMatch(/^Publicidade: o papel EDITOR/);
   });
 
-  it('registro único: uma inscrição por evento por notificador, e um aviso por evento publicado', async () => {
-    const { emitter, enviadas } = montar();
-    // 3 notificadores com regras (ficção não se inscreve em nada)
-    expect(emitter.quantidadeInscritos(EVENTOS.RECOMENDACAO_GERADA)).toBe(3);
-    expect(emitter.quantidadeInscritos(EVENTOS.MEMBRO_REJEITADO)).toBe(3);
-    expect(emitter.quantidadeInscritos(EVENTOS.PROJETO_ALTERADO)).toBe(0);
+  it('registro único: cada notificador é adicionado uma vez, e um aviso por evento publicado', async () => {
+    const { emitter, enviadas, notificadores } = montar();
+    // 4 notificadores, um por fábrica (o de ficção não reage a nada); adicionar de novo não duplica
+    expect(emitter.quantidadeObservadores()).toBe(4);
+    emitter.registrar(...Object.values(notificadores));
+    expect(emitter.quantidadeObservadores()).toBe(4);
     emitter.publicar(EVENTOS.MEMBRO_REJEITADO, rejeitado('DOCUMENTARIO'));
     await emitter.aguardarPendentes();
     expect(enviadas('DOCUMENTARIO')).toHaveLength(1);

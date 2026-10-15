@@ -1,5 +1,5 @@
-import { EVENTOS, type EventoBase, type NomeEvento } from '../EventTypes';
-import type { Observador, RecomendacaoEventEmitter } from '../RecomendacaoEventEmitter';
+import type { EventoBase, EventoRecomendacao, NomeEvento } from '../EventTypes';
+import type { Observador } from '../RecomendacaoEventEmitter';
 
 // Subconjunto compatível com o pino (logger do Fastify).
 export interface LoggerEstruturado {
@@ -28,10 +28,8 @@ export class AuditoriaObserver implements Observador {
     return this._registros;
   }
 
-  registrar(subject: RecomendacaoEventEmitter): void {
-    for (const evento of Object.values(EVENTOS)) {
-      subject.inscrever(evento, this.nome, (payload) => this.auditar(evento, payload));
-    }
+  atualizar(evento: EventoRecomendacao): void {
+    this.auditar(evento.nome, evento.payload);
   }
 
   private auditar(evento: NomeEvento, payload: EventoBase): void {

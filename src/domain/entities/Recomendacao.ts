@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ErroEstadoInvalido, ErroValidacao } from '../errors';
 import type { PapelTecnico, TipoEstrategia } from './Projeto';
-import type { Visitante } from './Visitante';
+import type { Elemento, Visitante } from './Visitante';
 
 export const STATUS_MEMBRO = ['SUGERIDO', 'CONVIDADO', 'CONFIRMADO', 'REJEITADO', 'RECUSADO', 'SUBSTITUIDO'] as const;
 export type StatusMembro = (typeof STATUS_MEMBRO)[number];
@@ -28,7 +28,7 @@ export interface DadosMembro {
   alternativas?: Alternativa[];
 }
 
-export class MembroRecomendado {
+export class MembroRecomendado implements Elemento {
   readonly id: string;
   readonly papel: PapelTecnico;
   readonly profissionalId: string;
@@ -83,7 +83,7 @@ export interface DadosRecomendacao {
 }
 
 // Equipe recomendada para um projeto, incluindo o histórico de rodadas por papel.
-export class Recomendacao {
+export class Recomendacao implements Elemento {
   readonly id: string;
   readonly projetoId: string;
   readonly estrategia: TipoEstrategia;

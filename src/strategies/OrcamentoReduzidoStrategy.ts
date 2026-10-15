@@ -20,7 +20,7 @@ export interface RegrasOrcamentoReduzido {
   reputacaoPadrao: number;
 }
 
-// Regras escolhidas por nós (o enunciado só diz "regras para orçamento reduzido").
+// Regras padrão para orçamento reduzido.
 // Para usar outras, passe um objeto diferente no construtor.
 export const REGRAS_PADRAO: RegrasOrcamentoReduzido = {
   notaMinima: 3,
@@ -39,7 +39,7 @@ export class OrcamentoReduzidoStrategy implements RecomendacaoStrategy {
 
   constructor(private readonly regras: RegrasOrcamentoReduzido = REGRAS_PADRAO) {}
 
-  ranquear(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[] {
+  recomendar(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[] {
     const r = this.regras;
     const pontuados: CandidatoPontuado[] = [];
     for (const profissional of candidatos) {

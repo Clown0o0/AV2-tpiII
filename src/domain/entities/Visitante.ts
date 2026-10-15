@@ -10,3 +10,7 @@ export interface Visitante {
   visitarMembro(membro: MembroRecomendado): void;
   visitarProfissional(profissional: Profissional): void;
 }
+
+export interface Elemento {
+  aceitar(visitante: Visitante): void;
+}

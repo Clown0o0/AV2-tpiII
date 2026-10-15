@@ -4,28 +4,28 @@ import type { PapelTecnico } from '../domain/entities/Projeto';
 import type { FabricaProjeto } from '../factories/FabricaProjeto';
 import type { CandidatoPontuado } from '../strategies/RecomendacaoStrategy';
 import {
-  ComposicaoEquipeTemplate,
+  OrquestradorEquipe,
   type EntradaComposicao,
   type EntradaNormalizada,
   type PapelNormalizado,
   type RankingPapel,
   type ResultadoComposicao,
   type SelecaoPapel,
-} from './ComposicaoEquipeTemplate';
+} from './OrquestradorEquipe';
 
-export const LIMITE_ALTERNATIVAS_PADRAO = 3; // escolha nossa, configurável
+export const LIMITE_ALTERNATIVAS_PADRAO = 3; // configurável
 
 export interface OpcoesComposicao {
   limiteAlternativas: number;
 }
 
-// Etapas padrão da composição. Regras que decidimos (o enunciado não define):
+// Etapas padrão da composição. Regras adotadas:
 //  - o custo de um profissional é o preço mínimo da faixa dele;
 //  - o candidato precisa estar disponível de hoje até a entrega;
 //  - escolha gulosa pelo peso do papel, guardando orçamento para os que faltam.
 // O ranking vem do recomendador criado pela fábrica recebida, então este orquestrador não
 // sabe (nem testa) qual é o tipo de projeto.
-export class ComposicaoEquipeDefault extends ComposicaoEquipeTemplate {
+export class OrquestradorPadrao extends OrquestradorEquipe {
   private readonly opcoes: OpcoesComposicao;
 
   constructor(
@@ -36,7 +36,7 @@ export class ComposicaoEquipeDefault extends ComposicaoEquipeTemplate {
     this.opcoes = { limiteAlternativas: LIMITE_ALTERNATIVAS_PADRAO, ...opcoes };
   }
 
-  protected validarRestricoesOrcamentarias(entrada: EntradaComposicao): void {
+  protected validarRestricoes(entrada: EntradaComposicao): void {
     const { projeto } = entrada;
     if (projeto.dataEntrega.getTime() <= entrada.dataReferencia.getTime()) {
       throw new ErroValidacao('A data de entrega do projeto já passou; não há prazo para compor a equipe');
@@ -53,7 +53,7 @@ export class ComposicaoEquipeDefault extends ComposicaoEquipeTemplate {
     }
   }
 
-  protected normalizarEntrada(entrada: EntradaComposicao): EntradaNormalizada {
+  protected normalizarDados(entrada: EntradaComposicao): EntradaNormalizada {
     const { projeto } = entrada;
     const fixos = entrada.membrosFixos ?? [];
     const idsFixos = new Set(fixos.map((m) => m.profissionalId));
@@ -117,7 +117,7 @@ export class ComposicaoEquipeDefault extends ComposicaoEquipeTemplate {
     const recomendador = this.fabrica.comEstrategia(entrada.estrategia).criarRecomendador();
     return entrada.papeis.map((papel) => ({
       papel,
-      ranking: recomendador.ranquear(papel.candidatos, {
+      ranking: recomendador.recomendar(papel.candidatos, {
         projeto: entrada.projeto,
         papel: papel.papel,
         perfilDesejado: papel.perfilDesejado,

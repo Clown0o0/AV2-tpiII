@@ -2,7 +2,7 @@ import type { Profissional } from '../domain/entities/Profissional';
 import type { FiltroCandidatos, ProfissionalRepository } from '../domain/ports/ProfissionalRepository';
 import type { FonteProfissionais } from '../events/EventTypes';
 
-// Valores escolhidos por nós. O timeout fica abaixo dos 2 s exigidos para a recomendação.
+// Valores padrão. O timeout fica abaixo dos 2 s exigidos para a recomendação.
 export const TIMEOUT_PADRAO_MS = 1500;
 // Por quanto tempo o cadastro carregado em memória é considerado atual.
 export const TTL_CATALOGO_PADRAO_MS = 60000;

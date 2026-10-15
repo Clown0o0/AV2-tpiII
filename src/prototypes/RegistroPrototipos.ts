@@ -18,7 +18,7 @@ const BASE_MODELO: Omit<DadosProjeto, 'genero' | 'duracaoEstimadaMin' | 'tipoCap
 export class RegistroPrototipos {
   private readonly prototipos = new Map<string, Projeto>();
 
-  // Modelos escolhidos por nós (o enunciado só diz que cada tipo pode ter um protótipo inicial).
+  // Um projeto-modelo inicial por tipo.
   static padrao(): RegistroPrototipos {
     const registro = new RegistroPrototipos();
     registro.registrar(

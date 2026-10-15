@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ErroValidacao } from '../errors';
 import { Competencia, type VetorCompetencias } from './Competencia';
-import type { Visitante } from './Visitante';
+import type { Elemento, Visitante } from './Visitante';
 
 export const PAPEIS_TECNICOS = [
   'DIRETOR',
@@ -19,8 +19,8 @@ export type TipoCaptacao = (typeof TIPOS_CAPTACAO)[number];
 export const TIPOS_ESTRATEGIA = ['COSSENO', 'FILTRAGEM_COLABORATIVA', 'ORCAMENTO_REDUZIDO'] as const;
 export type TipoEstrategia = (typeof TIPOS_ESTRATEGIA)[number];
 
-// Perfil usado quando o produtor não diz o que espera do papel. Nomes e níveis foram escolhidos
-// por nós (o enunciado não define); dá para sobrescrever com `competenciasDesejadas`.
+// Perfil usado quando o produtor não diz o que espera do papel; dá para sobrescrever com
+// `competenciasDesejadas`.
 export const PERFIL_PADRAO_POR_PAPEL: Readonly<Record<PapelTecnico, VetorCompetencias>> = {
   DIRETOR: { direcao: 1, narrativa: 0.8, lideranca: 0.9 },
   DIRETOR_FOTOGRAFIA: { fotografia: 1, iluminacao: 0.9, camera: 0.8 },
@@ -78,7 +78,7 @@ const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
 // Projeto de ficção (sem atributos específicos) e base dos demais tipos. É o Prototype:
 // clonar() devolve uma cópia profunda, com novo id, passando de novo pela validação.
-export class Projeto {
+export class Projeto implements Elemento {
   readonly id: string;
   readonly titulo: string;
   readonly produtorId: string;
@@ -111,7 +111,7 @@ export class Projeto {
     }));
     this.criadoEm = dados.criadoEm ?? new Date();
     this._orcamentoTotal = dados.orcamentoTotal;
-    this._dataEntrega = dados.dataEntrega;
+    this._dataEntrega = new Date(dados.dataEntrega.getTime());
     this._estrategia = dados.estrategia ?? 'COSSENO';
   }
 
@@ -120,7 +120,7 @@ export class Projeto {
   }
 
   get dataEntrega(): Date {
-    return this._dataEntrega;
+    return new Date(this._dataEntrega.getTime());
   }
 
   get estrategia(): TipoEstrategia {
@@ -189,7 +189,7 @@ export class Projeto {
     }
     if (alteracoes.dataEntrega !== undefined) {
       Projeto.validarData(alteracoes.dataEntrega);
-      this._dataEntrega = alteracoes.dataEntrega;
+      this._dataEntrega = new Date(alteracoes.dataEntrega.getTime());
     }
     if (alteracoes.estrategia !== undefined) this._estrategia = alteracoes.estrategia;
 

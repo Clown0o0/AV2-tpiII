@@ -1,6 +1,6 @@
 import type { Projeto } from '../../domain/entities/Projeto';
-import { EVENTOS } from '../EventTypes';
-import type { Observador, RecomendacaoEventEmitter } from '../RecomendacaoEventEmitter';
+import { EVENTOS, type EventoRecomendacao } from '../EventTypes';
+import type { Observador } from '../RecomendacaoEventEmitter';
 import type { LoggerEstruturado } from './AuditoriaObserver';
 
 export interface EmailSimulado {
@@ -13,54 +13,72 @@ export interface EmailSimulado {
 // Envio de e-mail SIMULADO: nada sai do processo; as mensagens ficam em `enviados` e no log.
 export class EmailObserver implements Observador {
   readonly nome = 'email';
-  readonly enviados: EmailSimulado[] = [];
+  private readonly _enviados: EmailSimulado[] = [];
 
   constructor(private readonly logger?: LoggerEstruturado) {}
 
-  registrar(subject: RecomendacaoEventEmitter): void {
-    subject.inscrever(EVENTOS.RECOMENDACAO_GERADA, this.nome, ({ projeto, recomendacao, motivo, profissionaisSugeridos }) => {
-      this.enviar(
-        emailProdutor(projeto),
-        `Equipe recomendada para "${projeto.titulo}"`,
-        `${motivo === 'REAVALIACAO' ? 'Reavaliação concluída. ' : ''}` +
-          `${recomendacao.membrosAtivos().length} de ${projeto.papeis.length} papéis possuem sugestão ` +
-          `(estratégia ${recomendacao.estrategia}).`,
-      );
-      for (const profissional of profissionaisSugeridos) {
-        const papel = recomendacao.membrosAtivos().find((m) => m.profissionalId === profissional.id)?.papel;
-        this.enviarInteresse(profissional.email, profissional.nome, projeto.titulo, papel);
+  get enviados(): readonly EmailSimulado[] {
+    return [...this._enviados];
+  }
+
+  atualizar(evento: EventoRecomendacao): void {
+    switch (evento.nome) {
+      case EVENTOS.RECOMENDACAO_GERADA: {
+        const { projeto, recomendacao, motivo, profissionaisSugeridos } = evento.payload;
+        this.enviar(
+          emailProdutor(projeto),
+          `Equipe recomendada para "${projeto.titulo}"`,
+          `${motivo === 'REAVALIACAO' ? 'Reavaliação concluída. ' : ''}` +
+            `${recomendacao.membrosAtivos().length} de ${projeto.papeis.length} papéis possuem sugestão ` +
+            `(estratégia ${recomendacao.estrategia}).`,
+        );
+        for (const profissional of profissionaisSugeridos) {
+          const papel = recomendacao.membrosAtivos().find((m) => m.profissionalId === profissional.id)?.papel;
+          this.enviarInteresse(profissional.email, profissional.nome, projeto.titulo, papel);
+        }
+        return;
       }
-    });
-    subject.inscrever(EVENTOS.MEMBRO_SUBSTITUIDO, this.nome, ({ projeto, papel, profissionalNovo }) => {
-      if (profissionalNovo) this.enviarInteresse(profissionalNovo.email, profissionalNovo.nome, projeto.titulo, papel);
-    });
-    subject.inscrever(EVENTOS.INTERESSE_PRODUTOR, this.nome, ({ projeto, convite, profissional }) => {
-      if (!profissional) return;
-      this.enviar(
-        profissional.email,
-        `Convite para o projeto "${projeto.titulo}"`,
-        `Olá, ${profissional.nome}! Um produtor tem interesse em você como ${convite.papel}. ` +
-          `Responda ao convite ${convite.id}.`,
-      );
-    });
-    subject.inscrever(EVENTOS.CONVITE_ACEITO, this.nome, ({ projeto, convite, profissional }) =>
-      this.enviar(
-        emailProdutor(projeto),
-        `Convite aceito: ${convite.papel}`,
-        `${profissional?.nome ?? convite.profissionalId} aceitou o convite para "${projeto.titulo}".`,
-      ),
-    );
-    subject.inscrever(EVENTOS.CONVITE_RECUSADO, this.nome, ({ projeto, convite, profissional }) =>
-      this.enviar(
-        emailProdutor(projeto),
-        `Convite recusado: ${convite.papel}`,
-        `${profissional?.nome ?? convite.profissionalId} recusou o convite para "${projeto.titulo}". ` +
-          'Você pode solicitar a substituição deste papel.',
-      ),
-    );
-    subject.inscrever(EVENTOS.EQUIPE_FINALIZADA, this.nome, ({ projeto }) =>
-      this.enviar(emailProdutor(projeto), `Equipe formada para "${projeto.titulo}"`, 'Todos os papéis foram confirmados.'),
-    );
+      case EVENTOS.MEMBRO_SUBSTITUIDO: {
+        const { projeto, papel, profissionalNovo } = evento.payload;
+        if (profissionalNovo) this.enviarInteresse(profissionalNovo.email, profissionalNovo.nome, projeto.titulo, papel);
+        return;
+      }
+      case EVENTOS.INTERESSE_PRODUTOR: {
+        const { projeto, convite, profissional } = evento.payload;
+        if (!profissional) return;
+        this.enviar(
+          profissional.email,
+          `Convite para o projeto "${projeto.titulo}"`,
+          `Olá, ${profissional.nome}! Um produtor tem interesse em você como ${convite.papel}. ` +
+            `Responda ao convite ${convite.id}.`,
+        );
+        return;
+      }
+      case EVENTOS.CONVITE_ACEITO: {
+        const { projeto, convite, profissional } = evento.payload;
+        this.enviar(
+          emailProdutor(projeto),
+          `Convite aceito: ${convite.papel}`,
+          `${profissional?.nome ?? convite.profissionalId} aceitou o convite para "${projeto.titulo}".`,
+        );
+        return;
+      }
+      case EVENTOS.CONVITE_RECUSADO: {
+        const { projeto, convite, profissional } = evento.payload;
+        this.enviar(
+          emailProdutor(projeto),
+          `Convite recusado: ${convite.papel}`,
+          `${profissional?.nome ?? convite.profissionalId} recusou o convite para "${projeto.titulo}". ` +
+            'Você pode solicitar a substituição deste papel.',
+        );
+        return;
+      }
+      case EVENTOS.EQUIPE_FINALIZADA: {
+        const { projeto } = evento.payload;
+        this.enviar(emailProdutor(projeto), `Equipe formada para "${projeto.titulo}"`, 'Todos os papéis foram confirmados.');
+        return;
+      }
+    }
   }
 
   private enviarInteresse(para: string, nome: string, titulo: string, papel: string | undefined): void {
@@ -74,7 +92,7 @@ export class EmailObserver implements Observador {
 
   private enviar(para: string, assunto: string, corpo: string): void {
     const email: EmailSimulado = { para, assunto, corpo, enviadoEm: new Date() };
-    this.enviados.push(email);
+    this._enviados.push(email);
     this.logger?.info({ canal: 'email', para, assunto }, 'e-mail simulado enviado');
   }
 }

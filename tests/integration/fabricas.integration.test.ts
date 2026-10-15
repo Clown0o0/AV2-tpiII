@@ -13,8 +13,8 @@ import { FabricaProjetoBase, type FabricaProjeto } from '../../src/factories/Fab
 import { FabricaProjetoRegistry } from '../../src/factories/FabricaProjetoRegistry';
 import { FabricaAnimacao } from '../../src/factories/animacao/FabricaAnimacao';
 import { FabricaDocumentario } from '../../src/factories/documentario/FabricaDocumentario';
-import { ComposicaoEquipeDefault } from '../../src/orchestration/ComposicaoEquipeDefault';
-import { RecomendacaoService } from '../../src/services/RecomendacaoService';
+import { OrquestradorPadrao } from '../../src/orchestration/OrquestradorPadrao';
+import { SistemaRecomendacao } from '../../src/services/SistemaRecomendacao';
 import { CossenoStrategy } from '../../src/strategies/CossenoStrategy';
 import { RecomendadorPorTipo } from '../../src/strategies/RecomendadorPorTipo';
 import { ValidacaoConsistenciaVisitor } from '../../src/visitors/ValidacaoConsistenciaVisitor';
@@ -25,7 +25,7 @@ type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 
 // ---------------------------------------------------------------------------------------------
 // Tipo novo definido SÓ aqui: realidade virtual. Prova que um tipo novo não exige mudar
-// ComposicaoEquipeTemplate, ComposicaoEquipeDefault nem RecomendacaoService.
+// OrquestradorEquipe, OrquestradorPadrao nem SistemaRecomendacao.
 // (Um tipo novo de verdade também entraria em TIPOS_CAPTACAO e no enum do banco.)
 // ---------------------------------------------------------------------------------------------
 const REALIDADE_VIRTUAL = 'REALIDADE_VIRTUAL' as TipoCaptacao;
@@ -82,7 +82,7 @@ function montarApp(extras: FabricaProjeto[] = []) {
   const auditoria = new AuditoriaObserver(logger);
   const eventos = new RecomendacaoEventEmitter().registrar(email, auditoria, ...notificadores.values());
   const projetos = new InMemoryProjetoRepository();
-  const service = new RecomendacaoService({
+  const service = new SistemaRecomendacao({
     profissionais: new InMemoryProfissionalRepository(elencoCompleto()),
     projetos,
     eventos,
@@ -177,7 +177,7 @@ describe('Fábricas: a mesma requisição com tipos diferentes gera ecossistemas
       };
     };
     const fabricas = new FabricaProjetoRegistry(FabricaProjetoRegistry.padrao().todas().map(espiar));
-    const service = new RecomendacaoService({
+    const service = new SistemaRecomendacao({
       profissionais: new InMemoryProfissionalRepository(elencoCompleto()),
       projetos: new InMemoryProjetoRepository(),
       eventos: new RecomendacaoEventEmitter(),
@@ -208,11 +208,11 @@ describe('Fábricas: a mesma requisição com tipos diferentes gera ecossistemas
     const entrada = {
       projeto: new ProjetoBase(dadosProjeto({ papeis: [{ papel: 'DIRETOR', peso: 1 }] })),
       profissionais: [vfx, pesquisador],
-      estrategia: { ...new CossenoStrategy(), ranquear: (c: readonly typeof vfx[]) => c.map((profissional) => ({ profissional, score: 0.5, detalhes: {} })) },
+      estrategia: { ...new CossenoStrategy(), recomendar: (c: readonly typeof vfx[]) => c.map((profissional) => ({ profissional, score: 0.5, detalhes: {} })) },
       dataReferencia: DATA_REFERENCIA,
     };
     const escolhido = (fabrica: FabricaProjeto) =>
-      new ComposicaoEquipeDefault(fabrica).compor(entrada).selecionados[0]?.escolhido.profissional.id;
+      new OrquestradorPadrao(fabrica).orquestrar(entrada).selecionados[0]?.escolhido.profissional.id;
     expect(escolhido(new FabricaAnimacao())).toBe('vfx');
     expect(escolhido(new FabricaDocumentario())).toBe('pesquisador');
   });
@@ -275,7 +275,7 @@ describe('Guarda: o orquestrador não conhece tipos de projeto', () => {
   });
 
   it('a pasta tem os dois arquivos do orquestrador', () => {
-    expect(arquivos.sort()).toEqual(['ComposicaoEquipeDefault.ts', 'ComposicaoEquipeTemplate.ts']);
+    expect(arquivos.sort()).toEqual(['OrquestradorEquipe.ts', 'OrquestradorPadrao.ts']);
   });
 });
 

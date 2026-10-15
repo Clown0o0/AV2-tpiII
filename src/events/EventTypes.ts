@@ -28,7 +28,7 @@ export interface EventoBase {
   ator: Ator;
   ocorridoEm: Date;
   projetoId: string;
-  // Preenchido pelo RecomendacaoService; deixa os notificadores por tipo filtrarem
+  // Preenchido pelo SistemaRecomendacao; deixa os notificadores por tipo filtrarem
   // eventos que não carregam o projeto (ex.: MEMBRO_REJEITADO).
   tipoCaptacao?: TipoCaptacao;
 }
@@ -102,3 +102,8 @@ export interface MapaEventos {
   [EVENTOS.INTEGRACAO_GERENCIAMENTO_PROJETOS]: IniciarGerenciamentoProjetos;
   [EVENTOS.INTEGRACAO_FINANCEIRO]: IniciarFinanceiro;
 }
+
+// Evento entregue aos observadores: o nome discrimina o tipo do payload.
+export type EventoRecomendacao = {
+  [E in NomeEvento]: { readonly nome: E; readonly payload: MapaEventos[E] };
+}[NomeEvento];

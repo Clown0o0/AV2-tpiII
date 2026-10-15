@@ -18,13 +18,13 @@ import { EVENTOS, type Ator, type EventoBase, type FonteProfissionais } from '..
 import type { RecomendacaoEventEmitter } from '../events/RecomendacaoEventEmitter';
 import type { FabricaProjeto } from '../factories/FabricaProjeto';
 import { FabricaProjetoRegistry } from '../factories/FabricaProjetoRegistry';
-import { ComposicaoEquipeDefault } from '../orchestration/ComposicaoEquipeDefault';
+import { OrquestradorPadrao } from '../orchestration/OrquestradorPadrao';
 import type {
-  ComposicaoEquipeTemplate,
+  OrquestradorEquipe,
   EntradaComposicao,
   ResultadoComposicao,
   SelecaoPapel,
-} from '../orchestration/ComposicaoEquipeTemplate';
+} from '../orchestration/OrquestradorEquipe';
 import { RegistroPrototipos } from '../prototypes/RegistroPrototipos';
 import { EstrategiaRegistry } from '../strategies/EstrategiaRegistry';
 import { CompatibilidadeEquipeVisitor, type ResultadoCompatibilidade } from '../visitors/CompatibilidadeEquipeVisitor';
@@ -33,8 +33,8 @@ import { RelatorioVisitor, type Relatorio } from '../visitors/RelatorioVisitor';
 import type { ResultadoValidacao } from '../visitors/ValidacaoConsistenciaVisitor';
 import { FonteProfissionaisResiliente, type OpcoesFonteResiliente, type ResultadoBusca } from './FonteProfissionaisResiliente';
 
-// O que conta como "alteração significativa" (RF3). O enunciado não dá números,
-// então escolhemos estes; dá para trocar pelo parâmetro `limiares` do serviço.
+// O que conta como "alteração significativa" (RF3); dá para trocar pelo parâmetro
+// `limiares` do serviço.
 export const LIMITE_VARIACAO_ORCAMENTO = 0.1; // 10% do orçamento
 export const LIMITE_VARIACAO_PRAZO_DIAS = 7;
 
@@ -43,15 +43,15 @@ export interface LimiaresReavaliacao {
   variacaoPrazoDias: number;
 }
 
-export interface DependenciasRecomendacaoService {
+export interface DependenciasSistemaRecomendacao {
   profissionais: ProfissionalRepository;
   projetos: ProjetoRepository;
   eventos: RecomendacaoEventEmitter;
   estrategias?: EstrategiaRegistry;
   fabricas?: FabricaProjetoRegistry;
   prototipos?: RegistroPrototipos;
-  // Monta o orquestrador para a fábrica do tipo do projeto (padrão: ComposicaoEquipeDefault).
-  criarComposicao?: (fabrica: FabricaProjeto) => ComposicaoEquipeTemplate;
+  // Monta o orquestrador para a fábrica do tipo do projeto (padrão: OrquestradorPadrao).
+  criarComposicao?: (fabrica: FabricaProjeto) => OrquestradorEquipe;
   relogio?: () => Date;
   limiares?: Partial<LimiaresReavaliacao>;
   opcoesFonte?: Partial<OpcoesFonteResiliente>;
@@ -85,24 +85,24 @@ export interface RelatorioCompleto {
 // Junta as peças: pelo tipo do projeto escolhe a fábrica, que cria o projeto, o recomendador
 // (usado pelo orquestrador) e o validador; roda a composição (template), publica os eventos
 // e monta os relatórios com os visitors.
-export class RecomendacaoService {
+export class SistemaRecomendacao {
   private readonly projetos: ProjetoRepository;
   private readonly eventos: RecomendacaoEventEmitter;
   private readonly estrategias: EstrategiaRegistry;
   private readonly fabricas: FabricaProjetoRegistry;
   private readonly prototipos: RegistroPrototipos;
-  private readonly criarComposicao: (fabrica: FabricaProjeto) => ComposicaoEquipeTemplate;
+  private readonly criarComposicao: (fabrica: FabricaProjeto) => OrquestradorEquipe;
   private readonly fonte: FonteProfissionaisResiliente;
   private readonly relogio: () => Date;
   private readonly limiares: LimiaresReavaliacao;
 
-  constructor(deps: DependenciasRecomendacaoService) {
+  constructor(deps: DependenciasSistemaRecomendacao) {
     this.projetos = deps.projetos;
     this.eventos = deps.eventos;
     this.estrategias = deps.estrategias ?? EstrategiaRegistry.padrao();
     this.fabricas = deps.fabricas ?? FabricaProjetoRegistry.padrao();
     this.prototipos = deps.prototipos ?? RegistroPrototipos.padrao();
-    this.criarComposicao = deps.criarComposicao ?? ((fabrica) => new ComposicaoEquipeDefault(fabrica));
+    this.criarComposicao = deps.criarComposicao ?? ((fabrica) => new OrquestradorPadrao(fabrica));
     this.fonte = new FonteProfissionaisResiliente(deps.profissionais, deps.opcoesFonte);
     this.relogio = deps.relogio ?? (() => new Date());
     this.limiares = {
@@ -371,7 +371,7 @@ export class RecomendacaoService {
     for (let tentativa = 0; ; tentativa++) {
       const busca = await this.fonte.buscarCandidatos(filtro);
       const entrada = montarEntrada(busca.profissionais);
-      const resultado = this.criarComposicao(this.fabricaDe(entrada.projeto)).compor(entrada);
+      const resultado = this.criarComposicao(this.fabricaDe(entrada.projeto)).orquestrar(entrada);
       if (tentativa > 0 || busca.fonte !== 'REPOSITORIO' || (await this.todosExistem(resultado))) {
         return { busca, resultado };
       }

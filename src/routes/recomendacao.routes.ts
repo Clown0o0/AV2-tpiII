@@ -1,16 +1,24 @@
 import type { FastifyInstance } from 'fastify';
-import type { Convite } from '../domain/entities/Convite';
+import type { Convite, StatusConvite } from '../domain/entities/Convite';
 import {
   PAPEIS_TECNICOS,
   TIPOS_ESTRATEGIA,
   type DadosProjeto,
+  type DetalhesProjeto,
+  type PapelRequerido,
   type PapelTecnico,
   type Projeto,
   type TipoCaptacao,
   type TipoEstrategia,
 } from '../domain/entities/Projeto';
-import type { MembroRecomendado, Recomendacao } from '../domain/entities/Recomendacao';
-import type { RecomendacaoService } from '../services/RecomendacaoService';
+import type {
+  Alternativa,
+  MembroRecomendado,
+  Recomendacao,
+  StatusMembro,
+  StatusRecomendacao,
+} from '../domain/entities/Recomendacao';
+import type { SistemaRecomendacao } from '../services/SistemaRecomendacao';
 
 // Com `modelo`, os campos ausentes vêm do projeto-modelo; sem ele, o corpo é o projeto completo.
 interface CorpoProjeto {
@@ -37,7 +45,7 @@ interface CorpoAlteracao {
 }
 
 // Os tipos aceitos vêm das fábricas registradas no serviço.
-function schemaProjeto(tiposCaptacao: readonly TipoCaptacao[]) {
+function schemaProjeto(tiposCaptacao: readonly TipoCaptacao[]): Record<string, unknown> {
   return {
     type: 'object',
     required: ['titulo', 'produtorId', 'orcamentoTotal', 'dataEntrega', 'localizacao'],
@@ -87,7 +95,7 @@ const schemaMembroParams = {
 } as const;
 
 export interface OpcoesRotas {
-  service: RecomendacaoService;
+  service: SistemaRecomendacao;
 }
 
 // Rotas e requisitos:
@@ -220,7 +228,60 @@ export async function recomendacaoRoutes(app: FastifyInstance, { service }: Opco
   );
 }
 
-export function projetoJson(projeto: Projeto) {
+export interface ProjetoJson {
+  id: string;
+  titulo: string;
+  produtorId: string;
+  produtorEmail: string | null;
+  genero: string;
+  duracaoEstimadaMin: number;
+  orcamentoTotal: number;
+  dataEntrega: string;
+  tipoCaptacao: TipoCaptacao;
+  localizacao: string;
+  estrategia: TipoEstrategia;
+  papeis: readonly PapelRequerido[];
+  detalhes: DetalhesProjeto | null;
+}
+
+export interface MembroJson {
+  id: string;
+  papel: PapelTecnico;
+  profissionalId: string;
+  score: number;
+  custo: number;
+  status: StatusMembro;
+  rodada: number;
+  alternativas: readonly Alternativa[];
+}
+
+export interface RecomendacaoJson {
+  id: string;
+  projetoId: string;
+  estrategia: TipoEstrategia;
+  status: StatusRecomendacao;
+  parcial: boolean;
+  avisos: readonly string[];
+  rodadas: number;
+  custoTotal: number;
+  criadaEm: string;
+  finalizadaEm: string | null;
+  equipe: MembroJson[];
+  historico: MembroJson[];
+}
+
+export interface ConviteJson {
+  id: string;
+  recomendacaoId: string;
+  projetoId: string;
+  profissionalId: string;
+  papel: PapelTecnico;
+  status: StatusConvite;
+  criadoEm: string;
+  respondidoEm: string | null;
+}
+
+export function projetoJson(projeto: Projeto): ProjetoJson {
   return {
     id: projeto.id,
     titulo: projeto.titulo,
@@ -238,7 +299,7 @@ export function projetoJson(projeto: Projeto) {
   };
 }
 
-export function membroJson(membro: MembroRecomendado) {
+export function membroJson(membro: MembroRecomendado): MembroJson {
   return {
     id: membro.id,
     papel: membro.papel,
@@ -251,7 +312,7 @@ export function membroJson(membro: MembroRecomendado) {
   };
 }
 
-export function recomendacaoJson(recomendacao: Recomendacao) {
+export function recomendacaoJson(recomendacao: Recomendacao): RecomendacaoJson {
   return {
     id: recomendacao.id,
     projetoId: recomendacao.projetoId,
@@ -268,7 +329,7 @@ export function recomendacaoJson(recomendacao: Recomendacao) {
   };
 }
 
-export function conviteJson(convite: Convite) {
+export function conviteJson(convite: Convite): ConviteJson {
   return {
     id: convite.id,
     recomendacaoId: convite.recomendacaoId,

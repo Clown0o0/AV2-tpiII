@@ -8,7 +8,7 @@ import { FabricaProjetoRegistry } from './factories/FabricaProjetoRegistry';
 import { PrismaProfissionalRepository } from './repositories/PrismaProfissionalRepository';
 import { PrismaProjetoRepository } from './repositories/PrismaProjetoRepository';
 import { TIMEOUT_PADRAO_MS, TTL_CATALOGO_PADRAO_MS } from './services/FonteProfissionaisResiliente';
-import { RecomendacaoService } from './services/RecomendacaoService';
+import { SistemaRecomendacao } from './services/SistemaRecomendacao';
 
 try {
   process.loadEnvFile();
@@ -18,7 +18,7 @@ try {
 
 const prisma = new PrismaClient();
 let eventos: RecomendacaoEventEmitter | undefined;
-let servico: RecomendacaoService | undefined;
+let servico: SistemaRecomendacao | undefined;
 
 const app = construirApp({
   logger: { level: process.env.LOG_LEVEL ?? 'info' },
@@ -33,7 +33,7 @@ const app = construirApp({
       new AuditoriaObserver(logger),
       ...fabricas.todas().map((fabrica) => fabrica.criarNotificador()),
     );
-    servico = new RecomendacaoService({
+    servico = new SistemaRecomendacao({
       profissionais: new PrismaProfissionalRepository(prisma),
       projetos: new PrismaProjetoRepository(prisma, fabricas),
       eventos,

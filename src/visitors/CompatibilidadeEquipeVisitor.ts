@@ -31,7 +31,7 @@ export interface PesosCompatibilidade {
   reputacaoSemAvaliacao: number;
 }
 
-// Pesos escolhidos por nós (o enunciado não define a fórmula); podem ser trocados no construtor.
+// Pesos padrão da fórmula; podem ser trocados no construtor.
 export const PESOS_COMPATIBILIDADE: PesosCompatibilidade = {
   competencias: 0.6,
   reputacao: 0.25,

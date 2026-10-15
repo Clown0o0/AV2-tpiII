@@ -1,5 +1,5 @@
 /**
- * APOIO A TESTES MANUAIS — não faz parte dos requisitos do enunciado.
+ * APOIO A TESTES MANUAIS.
  * Existe apenas para que haja profissionais no banco ao chamar a API localmente.
  *
  * Popula o banco com profissionais fictícios (determinístico).

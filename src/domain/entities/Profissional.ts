@@ -3,7 +3,7 @@ import { ErroValidacao } from '../errors';
 import { Avaliacao } from './Avaliacao';
 import { Competencia, type VetorCompetencias } from './Competencia';
 import type { PapelTecnico } from './Projeto';
-import type { Visitante } from './Visitante';
+import type { Elemento, Visitante } from './Visitante';
 
 export interface Disponibilidade {
   inicio: Date;
@@ -24,7 +24,7 @@ export interface DadosProfissional {
   avaliacoes?: Avaliacao[];
 }
 
-export class Profissional {
+export class Profissional implements Elemento {
   readonly id: string;
   readonly nome: string;
   readonly email: string;
@@ -53,7 +53,7 @@ export class Profissional {
     this.precoMax = dados.precoMax;
     this.localizacao = dados.localizacao.trim();
     this.chaveLocalizacao = chaveLocalizacao(this.localizacao);
-    this.disponibilidade = dados.disponibilidade.map((d) => ({ inicio: d.inicio, fim: d.fim }));
+    this.disponibilidade = dados.disponibilidade.map((d) => ({ inicio: new Date(d.inicio.getTime()), fim: new Date(d.fim.getTime()) }));
     this.competencias = [...dados.competencias];
     this.historicoProjetos = [...(dados.historicoProjetos ?? [])];
     this.avaliacoes = [...(dados.avaliacoes ?? [])];

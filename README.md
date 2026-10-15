@@ -75,11 +75,11 @@ src/
 │   ├── animacao/        FabricaAnimacao, RecomendadorAnimacao, ValidadorAnimacao, NotificadorAnimacao
 │   └── publicitario/    FabricaPublicitario, RecomendadorPublicitario, ValidadorPublicitario, NotificadorPublicitario
 ├── strategies/      Strategy: algoritmos de recomendação (e a base dos recomendadores por tipo)
-├── orchestration/   Template Method: fluxo fixo de composição da equipe (recebe a fábrica)
-├── events/          Observer: eventos e observadores (e-mail, mensagem interna, auditoria, base dos notificadores por tipo)
+├── orchestration/   Template Method: OrquestradorEquipe (fluxo fixo) e OrquestradorPadrao (recebe a fábrica)
+├── events/          Observer: Publicador (RecomendacaoEventEmitter) e observadores com atualizar(evento) (e-mail, mensagem interna, auditoria, base dos notificadores por tipo)
 ├── visitors/        Visitor: validação, compatibilidade e relatório da equipe
 ├── repositories/    Acesso ao banco com Prisma
-├── services/        Regras de uso (RecomendacaoService) e tolerância a falhas
+├── services/        Regras de uso (SistemaRecomendacao) e tolerância a falhas
 └── routes/          Rotas REST
 ```
 
@@ -147,6 +147,11 @@ psql --version
    ```bash
    npm run dev
    ```
+   Ou, compilando com o `tsc` e executando o `.js` gerado em `dist/`:
+   ```bash
+   npm run build
+   npm start
+   ```
 
 8. **Em outro terminal, em qualquer pasta**, confirme que está no ar:
    ```bash
@@ -176,7 +181,7 @@ Pré-requisitos por sistema:
 
 O código não tem scripts de shell nem caminhos fixos de sistema: os scripts do `package.json` rodam iguais no cmd, no PowerShell e no bash, e os caminhos usados nos testes são montados com `node:path`. O `.gitattributes` fixa o fim de linha em LF, para o checkout no Windows não alterar os arquivos. A única diferença entre sistemas é como definir variáveis de ambiente na linha de comando (veja o passo 6 de "Como rodar").
 
-O GitHub Actions (`.github/workflows/ci.yml`) roda `npm ci`, `npx prisma generate`, `npx tsc --noEmit` e `npm test` em `ubuntu-24.04` e `windows-latest` com Node 24. Os testes não precisam de PostgreSQL.
+O GitHub Actions (`.github/workflows/ci.yml`) roda `npm ci`, `npx prisma generate`, `npx tsc --noEmit`, `npm run build` e `npm test` em `ubuntu-24.04` e `windows-latest` com Node 24. Os testes não precisam de PostgreSQL.
 
 Quem já tem o banco da ATVI só precisa rodar `npx prisma migrate deploy` (passo 5 de "Como rodar"): apenas a migration nova da ATVII é aplicada.
 

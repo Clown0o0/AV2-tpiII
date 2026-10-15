@@ -66,25 +66,25 @@ export interface ResultadoComposicao {
 }
 
 // Template Method. O fluxo é sempre validar -> normalizar -> aplicar estratégia -> pós-processar;
-// as subclasses só implementam as etapas. compor() não pode ser sobrescrito (o construtor barra).
-export abstract class ComposicaoEquipeTemplate {
+// as subclasses só implementam as etapas. orquestrar() não pode ser sobrescrito (o construtor barra).
+export abstract class OrquestradorEquipe {
   protected constructor() {
-    if (this.compor !== ComposicaoEquipeTemplate.prototype.compor) {
-      throw new TypeError(`${new.target.name} não pode sobrescrever o fluxo compor() do ComposicaoEquipeTemplate`);
+    if (this.orquestrar !== OrquestradorEquipe.prototype.orquestrar) {
+      throw new TypeError(`${new.target.name} não pode sobrescrever o fluxo orquestrar() do OrquestradorEquipe`);
     }
   }
 
-  compor(entrada: EntradaComposicao): ResultadoComposicao {
-    this.validarRestricoesOrcamentarias(entrada);
-    const normalizada = this.normalizarEntrada(entrada);
+  orquestrar(entrada: EntradaComposicao): ResultadoComposicao {
+    this.validarRestricoes(entrada);
+    const normalizada = this.normalizarDados(entrada);
     const rankings = this.aplicarEstrategia(normalizada);
     return this.posProcessar(rankings, normalizada);
   }
 
-  protected abstract validarRestricoesOrcamentarias(entrada: EntradaComposicao): void;
-  protected abstract normalizarEntrada(entrada: EntradaComposicao): EntradaNormalizada;
+  protected abstract validarRestricoes(entrada: EntradaComposicao): void;
+  protected abstract normalizarDados(entrada: EntradaComposicao): EntradaNormalizada;
   protected abstract aplicarEstrategia(entrada: EntradaNormalizada): RankingPapel[];
   protected abstract posProcessar(rankings: RankingPapel[], entrada: EntradaNormalizada): ResultadoComposicao;
 }
 
-Object.defineProperty(ComposicaoEquipeTemplate.prototype, 'compor', { writable: false, configurable: false });
+Object.defineProperty(OrquestradorEquipe.prototype, 'orquestrar', { writable: false, configurable: false });

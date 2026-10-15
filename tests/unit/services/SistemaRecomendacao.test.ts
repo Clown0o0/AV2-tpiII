@@ -5,8 +5,8 @@ import { RecomendacaoEventEmitter } from '../../../src/events/RecomendacaoEventE
 import {
   LIMITE_VARIACAO_ORCAMENTO,
   LIMITE_VARIACAO_PRAZO_DIAS,
-  RecomendacaoService,
-} from '../../../src/services/RecomendacaoService';
+  SistemaRecomendacao,
+} from '../../../src/services/SistemaRecomendacao';
 import { criarProfissional, dadosProjeto, DATA_ENTREGA, DATA_REFERENCIA, elencoCompleto } from '../../support/fixtures';
 import { InMemoryProfissionalRepository, InMemoryProjetoRepository } from '../../support/InMemoryRepositories';
 
@@ -15,12 +15,13 @@ function montar() {
   const projetos = new InMemoryProjetoRepository();
   const eventos = new RecomendacaoEventEmitter();
   const publicados: Array<{ evento: NomeEvento; payload: unknown }> = [];
-  for (const evento of Object.values(EVENTOS)) {
-    eventos.inscrever(evento, 'espiao', (payload) => {
-      publicados.push({ evento, payload });
-    });
-  }
-  const service = new RecomendacaoService({
+  eventos.adicionar({
+    nome: 'espiao',
+    atualizar: (evento) => {
+      publicados.push({ evento: evento.nome, payload: evento.payload });
+    },
+  });
+  const service = new SistemaRecomendacao({
     profissionais,
     projetos,
     eventos,
@@ -36,7 +37,7 @@ function montar() {
 
 const PAPEIS: PapelTecnico[] = ['DIRETOR', 'DIRETOR_FOTOGRAFIA', 'EDITOR'];
 
-describe('RecomendacaoService', () => {
+describe('SistemaRecomendacao', () => {
   it('recomenda uma equipe completa, persiste e publica o evento', async () => {
     const { service, projetos, nomes } = montar();
     const { projeto, recomendacao, fonteProfissionais } = await service.recomendar(dadosProjeto());
@@ -66,7 +67,7 @@ describe('RecomendacaoService', () => {
 
   it('profissional removido do banco mas ainda no catálogo em memória: recarrega e recompõe sem ele', async () => {
     const profissionais = new InMemoryProfissionalRepository(elencoCompleto());
-    const service = new RecomendacaoService({
+    const service = new SistemaRecomendacao({
       profissionais,
       projetos: new InMemoryProjetoRepository(),
       eventos: new RecomendacaoEventEmitter(),
@@ -286,7 +287,7 @@ describe('RecomendacaoService', () => {
     it('os limites de "alteração significativa" são configuráveis', async () => {
       expect(LIMITE_VARIACAO_ORCAMENTO).toBe(0.1);
       expect(LIMITE_VARIACAO_PRAZO_DIAS).toBe(7);
-      const service = new RecomendacaoService({
+      const service = new SistemaRecomendacao({
         profissionais: new InMemoryProfissionalRepository(elencoCompleto()),
         projetos: new InMemoryProjetoRepository(),
         eventos: new RecomendacaoEventEmitter(),
@@ -333,7 +334,7 @@ describe('RecomendacaoService', () => {
   });
 
   it('usa os padrões de relógio, estratégias e composição quando não injetados', async () => {
-    const service = new RecomendacaoService({
+    const service = new SistemaRecomendacao({
       profissionais: new InMemoryProfissionalRepository([criarProfissional()]),
       projetos: new InMemoryProjetoRepository(),
       eventos: new RecomendacaoEventEmitter(),

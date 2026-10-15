@@ -1,48 +1,69 @@
 import { EventEmitter } from 'node:events';
-import type { MapaEventos, NomeEvento } from './EventTypes';
-
-export type Handler<E extends NomeEvento> = (payload: MapaEventos[E]) => void | Promise<void>;
+import type { EventoRecomendacao, MapaEventos, NomeEvento } from './EventTypes';
 
 export type TratadorFalha = (erro: unknown, evento: NomeEvento, observador: string) => void;
 
 export interface Observador {
   readonly nome: string;
-  registrar(subject: RecomendacaoEventEmitter): void;
+  atualizar(evento: EventoRecomendacao): void | Promise<void>;
 }
 
-// Subject do Observer, em cima do EventEmitter do Node.
-// Cada observador roda depois do publicar() e isolado dos outros: se um quebrar, o erro vai
+export interface Publicador {
+  adicionar(observador: Observador): void;
+  remover(observador: Observador): void;
+  notificar(evento: EventoRecomendacao): void;
+}
+
+const CANAL = 'evento';
+
+// Publicador do Observer, em cima do EventEmitter do Node.
+// Cada observador roda depois do notificar() e isolado dos outros: se um quebrar, o erro vai
 // para o tratadorFalha e o resto segue normalmente. Trocar por um broker depois (RabbitMQ etc.)
-// só exige reimplementar publicar/inscrever.
-export class RecomendacaoEventEmitter {
+// só exige reimplementar adicionar/remover/notificar.
+export class RecomendacaoEventEmitter implements Publicador {
   private readonly emitter = new EventEmitter();
   private readonly pendentes = new Set<Promise<void>>();
+  private readonly listeners = new Map<Observador, (evento: EventoRecomendacao) => void>();
 
   constructor(private readonly tratadorFalha: TratadorFalha = () => {}) {
     this.emitter.setMaxListeners(100);
   }
 
-  inscrever<E extends NomeEvento>(evento: E, observador: string, handler: Handler<E>): () => void {
-    const listener = (payload: MapaEventos[E]) => {
-      const tarefa = this.executar(evento, observador, () => handler(payload));
+  adicionar(observador: Observador): void {
+    if (this.listeners.has(observador)) return;
+    const listener = (evento: EventoRecomendacao): void => {
+      const tarefa = this.executar(evento.nome, observador.nome, () => observador.atualizar(evento));
       this.pendentes.add(tarefa);
       void tarefa.finally(() => this.pendentes.delete(tarefa));
     };
-    this.emitter.on(evento, listener);
-    return () => this.emitter.off(evento, listener);
+    this.listeners.set(observador, listener);
+    this.emitter.on(CANAL, listener);
   }
 
+  remover(observador: Observador): void {
+    const listener = this.listeners.get(observador);
+    if (!listener) return;
+    this.emitter.off(CANAL, listener);
+    this.listeners.delete(observador);
+  }
+
+  notificar(evento: EventoRecomendacao): void {
+    this.emitter.emit(CANAL, evento);
+  }
+
+  // Atalho: adiciona vários observadores de uma vez.
   registrar(...observadores: Observador[]): this {
-    for (const observador of observadores) observador.registrar(this);
+    for (const observador of observadores) this.adicionar(observador);
     return this;
   }
 
-  publicar<E extends NomeEvento>(evento: E, payload: MapaEventos[E]): void {
-    this.emitter.emit(evento, payload);
+  // Atalho: monta o evento a partir do nome e do payload e notifica.
+  publicar<E extends NomeEvento>(nome: E, payload: MapaEventos[E]): void {
+    this.notificar({ nome, payload } as EventoRecomendacao);
   }
 
-  quantidadeInscritos(evento: NomeEvento): number {
-    return this.emitter.listenerCount(evento);
+  quantidadeObservadores(): number {
+    return this.listeners.size;
   }
 
   // Usado nos testes e no desligamento do servidor.

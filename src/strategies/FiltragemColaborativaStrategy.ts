@@ -8,7 +8,7 @@ import {
   type RecomendacaoStrategy,
 } from './RecomendacaoStrategy';
 
-// Parâmetros escolhidos por nós (o enunciado não fixa a técnica de filtragem colaborativa).
+// Parâmetros da filtragem colaborativa.
 export const PESO_PRIOR_BAYESIANO = 2; // quantas "notas virtuais" com a média geral cada profissional recebe
 export const NOTA_NEUTRA = 3; // meio da escala 1..5
 
@@ -20,7 +20,7 @@ export class FiltragemColaborativaStrategy implements RecomendacaoStrategy {
   readonly tipo = 'FILTRAGEM_COLABORATIVA' as const;
   readonly descricao = 'Filtragem colaborativa usando o histórico de avaliações de produtores';
 
-  ranquear(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[] {
+  recomendar(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[] {
     const resumo = resumoDoUniverso(contexto.universo);
     const { notas, mediaGeral } = resumo;
     const produtor = contexto.projeto.produtorId;
