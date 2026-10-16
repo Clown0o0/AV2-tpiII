@@ -66,7 +66,7 @@ Copy-Item .env.example .env
 notepad .env
 npx prisma migrate deploy
 npm run db:seed
-node exemplos/atualizar-datas.js
+npm run exemplos
 npm run dev
 ```
 
@@ -80,7 +80,7 @@ cp .env.example .env
 nano .env
 npx prisma migrate deploy
 npm run db:seed
-node exemplos/atualizar-datas.js
+npm run exemplos
 npm run dev
 ```
 
@@ -88,7 +88,7 @@ No editor aberto pelo `notepad`/`nano`, troque `USUARIO` e `SENHA` na `DATABASE_
 
 ```powershell
 curl.exe http://localhost:3000/health
-curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/documentario.json"
+curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/gerados/documentario.json"
 ```
 
 No Linux, use `curl` no lugar de `curl.exe` (ou rode uma vez `alias curl.exe=curl` nesse terminal e copie os comandos como estão).
@@ -120,7 +120,8 @@ Todos os comandos `npm`, `npx` e `node` rodam na **raiz do projeto**: a pasta `A
 ```
 AV2-tpiII/            <- raiz do projeto: rode os comandos aqui
 ├── docs/             documentação técnica (ATVII.md)
-├── exemplos/         corpos JSON usados nos exemplos de requisição
+├── exemplos/         modelos JSON dos exemplos de requisição e o script que gera as cópias com data atual
+│   └── gerados/      cópias criadas por `npm run exemplos` (fora do Git)
 ├── prisma/           schema, migrations e seed
 ├── src/              código do serviço
 ├── tests/            testes (Jest)
@@ -220,23 +221,26 @@ SEED_PROFISSIONAIS=10000 npm run db:seed
 
 **Se falhar:** [variável de ambiente inválida](#variável-de-ambiente-inválida), [não conecta ao banco](#não-conecta-ao-banco).
 
-### 6. Ajustar as datas dos exemplos
+### 6. Gerar os exemplos com a data atual
 
 **Onde:** raiz do projeto.
 
 ```bash
-node exemplos/atualizar-datas.js
+npm run exemplos
 ```
 
-**Resultado esperado:** uma linha por arquivo, com a data de hoje + 60 dias:
+**Resultado esperado:** a pasta `exemplos/gerados/` com uma cópia de cada exemplo, com `dataEntrega` = hoje + 60 dias:
 
 ```
-animacao.json: dataEntrega = AAAA-MM-DD
-documentario.json: dataEntrega = AAAA-MM-DD
-modelo-publicitario.json: dataEntrega = AAAA-MM-DD
+Exemplos gravados em exemplos/gerados com dataEntrega = AAAA-MM-DD (os modelos em exemplos/ não mudam):
+  exemplos/gerados/alterar-projeto.json
+  exemplos/gerados/animacao.json
+  exemplos/gerados/documentario.json
+  exemplos/gerados/modelo-publicitario.json
+  exemplos/gerados/resposta-convite.json
 ```
 
-A API recusa `dataEntrega` no passado e só sugere quem tem agenda até a entrega. Uma data fixa nos arquivos acabaria vencendo; o script troca a `dataEntrega` dos `exemplos/*.json` por uma data que cabe na agenda do seed. Rode de novo se os exemplos ficarem velhos. Quando a data muda, o `git status` mostra os arquivos de `exemplos/` como alterados; é esperado.
+A API recusa `dataEntrega` no passado e só sugere quem tem agenda até a entrega. Uma data fixa acabaria vencendo; por isso os arquivos de `exemplos/` são só modelos (a `dataEntrega` deles é ilustrativa) e os comandos usam as cópias de `exemplos/gerados/`, com uma data que cabe na agenda do seed. A pasta `exemplos/gerados/` está no `.gitignore`, então o `git status` continua limpo. Rode `npm run exemplos` de novo sempre que aparecer o erro 422 "A data de entrega do projeto já passou" ([solução de problemas](#erro-422-a-data-de-entrega-do-projeto-já-passou)).
 
 ### 7. Rodar o servidor
 
@@ -279,7 +283,7 @@ curl.exe http://localhost:3000/health
 npm test
 ```
 
-**Resultado esperado:** `Test Suites: 25 passed, 25 total`, `Tests: 248 passed, 248 total` e a tabela de cobertura (o mínimo exigido é 80%).
+**Resultado esperado:** `Test Suites: 26 passed, 26 total`, `Tests: 255 passed, 255 total` e a tabela de cobertura (o mínimo exigido é 80%).
 
 Use sempre `npm test`, e não `npx jest`: o Fastify carrega pacotes ESM, e o Jest só consegue com a opção `--experimental-vm-modules` do Node, que o script `test` já passa. Veja [`npx jest` falha](#npx-jest-falha-com-must-use-import-to-load-es-module).
 
@@ -328,14 +332,14 @@ Todo erro responde no mesmo formato, `{"erro": "CODIGO", "mensagem": "..."}`:
 
 ### Exemplos de requisição
 
-**Onde:** raiz do projeto (os caminhos `@exemplos/...` são relativos a ela), com o servidor rodando. Os corpos estão em [`exemplos/`](exemplos/) e são enviados como arquivo com `--data-binary`, o que evita problemas de aspas e acentos no PowerShell. No Linux, use `curl` no lugar de `curl.exe`, ou rode uma vez `alias curl.exe=curl` no terminal.
+**Onde:** raiz do projeto (os caminhos `@exemplos/gerados/...` são relativos a ela), com o servidor rodando. Os corpos são as cópias de `exemplos/gerados/`, criadas a partir dos modelos de [`exemplos/`](exemplos/), e são enviados como arquivo com `--data-binary`, o que evita problemas de aspas e acentos no PowerShell. No Linux, use `curl` no lugar de `curl.exe`, ou rode uma vez `alias curl.exe=curl` no terminal.
 
-Rode antes `node exemplos/atualizar-datas.js` ([passo 6](#6-ajustar-as-datas-dos-exemplos)). Nos comandos abaixo, troque `ID_DA_RECOMENDACAO`, `ID_DO_PROJETO` e `ID_DO_CONVITE` pelos valores das respostas anteriores.
+Rode antes `npm run exemplos` ([passo 6](#6-gerar-os-exemplos-com-a-data-atual)), e de novo se algum exemplo responder 422 "A data de entrega do projeto já passou". Nos comandos abaixo, troque `ID_DA_RECOMENDACAO`, `ID_DO_PROJETO` e `ID_DO_CONVITE` pelos valores das respostas anteriores.
 
 **1. Documentário** ([`exemplos/documentario.json`](exemplos/documentario.json), estratégia `ORCAMENTO_REDUZIDO`, com `detalhes` de documentário):
 
 ```bash
-curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/documentario.json"
+curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/gerados/documentario.json"
 ```
 
 Resposta 201: `{"projeto":{"id":"...",...},"recomendacao":{"id":"...","status":"EM_ANDAMENTO",...,"equipe":[{"papel":"DIRETOR","status":"SUGERIDO",...},...]},"fonteProfissionais":"REPOSITORIO"}`. Anote `recomendacao.id` (ID_DA_RECOMENDACAO).
@@ -351,7 +355,7 @@ Resposta 201 com `"convite":{"id":"...","status":"PENDENTE",...}`. Anote o `conv
 **3. Responder cada convite** ([`exemplos/resposta-convite.json`](exemplos/resposta-convite.json), `{"aceito": true}`):
 
 ```bash
-curl.exe -X POST http://localhost:3000/convites/ID_DO_CONVITE/responder -H "content-type: application/json" --data-binary "@exemplos/resposta-convite.json"
+curl.exe -X POST http://localhost:3000/convites/ID_DO_CONVITE/responder -H "content-type: application/json" --data-binary "@exemplos/gerados/resposta-convite.json"
 ```
 
 Resposta 200 com `"equipeFinalizada":false` nos primeiros e `"equipeFinalizada":true` no último, quando a `recomendacao` passa a `"status":"FINALIZADA"`.
@@ -366,7 +370,7 @@ curl.exe http://localhost:3000/recomendacoes/ID_DA_RECOMENDACAO/relatorio
 **5. Animação** ([`exemplos/animacao.json`](exemplos/animacao.json), técnica 3D a 24 quadros por segundo):
 
 ```bash
-curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/animacao.json"
+curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/gerados/animacao.json"
 curl.exe http://localhost:3000/recomendacoes/ID_DA_RECOMENDACAO/relatorio
 ```
 
@@ -375,7 +379,7 @@ O relatório da animação traz `relatorio.metricasRenderizacao`, por exemplo `{
 **6. Alterar o projeto da animação** ([`exemplos/alterar-projeto.json`](exemplos/alterar-projeto.json): orçamento de 90000 para 135000, +50%):
 
 ```bash
-curl.exe -X PATCH http://localhost:3000/projetos/ID_DO_PROJETO -H "content-type: application/json" --data-binary "@exemplos/alterar-projeto.json"
+curl.exe -X PATCH http://localhost:3000/projetos/ID_DO_PROJETO -H "content-type: application/json" --data-binary "@exemplos/gerados/alterar-projeto.json"
 ```
 
 Resposta 200 com `"alteracao":{"variacaoOrcamento":0.5,"variacaoPrazoDias":0,"estrategiaAlterada":false}`, `"reavaliada":true` e uma `recomendacao` nova. Em projeto com equipe finalizada (o documentário do item 3), a resposta é 409 `ESTADO_INVALIDO`.
@@ -384,7 +388,7 @@ Resposta 200 com `"alteracao":{"variacaoOrcamento":0.5,"variacaoPrazoDias":0,"es
 
 ```bash
 curl.exe http://localhost:3000/projetos/modelos
-curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/modelo-publicitario.json"
+curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/gerados/modelo-publicitario.json"
 ```
 
 O primeiro responde `{"modelos":["ficcao","documentario","animacao","publicitario"]}`; o segundo, 201 com um projeto `PUBLICITARIO` e a equipe do modelo (`DIRETOR`, `DIRETOR_FOTOGRAFIA` e `EDITOR`).
@@ -427,7 +431,8 @@ tests/
 ├── integration/          API completa com repositórios em memória
 └── support/              Fixtures, repositórios em memória e montagem do sistema de teste
 prisma/                   schema.prisma, migrations e seed.ts
-exemplos/                 Corpos JSON dos exemplos e o script atualizar-datas.js
+exemplos/                 Modelos JSON dos exemplos e o script atualizar-datas.js (npm run exemplos)
+  └── gerados/            Cópias com dataEntrega atual, usadas pelos curl (fora do Git)
 docs/                     ATVII.md (documentação técnica)
 ```
 
@@ -581,7 +586,7 @@ npx prisma generate
 
 **Causa:** no Windows PowerShell, `curl` é outro comando (`Invoke-WebRequest`).
 
-**Solução:** use `curl.exe`, como nos exemplos. Envie o corpo de `POST`/`PATCH` como arquivo (`--data-binary "@exemplos/arquivo.json"`): passado com `-d '{...}'` direto no PowerShell, o JSON perde as aspas internas e o servidor responde `Body is not valid JSON`.
+**Solução:** use `curl.exe`, como nos exemplos. Envie o corpo de `POST`/`PATCH` como arquivo (`--data-binary "@exemplos/gerados/arquivo.json"`): passado com `-d '{...}'` direto no PowerShell, o JSON perde as aspas internas e o servidor responde `Body is not valid JSON`.
 
 ### curl.exe não encontrado (Linux)
 
@@ -651,13 +656,13 @@ npm test -- --testTimeout=30000
 
 **Causa:** não há profissionais cadastrados para o papel, disponíveis até a `dataEntrega` e dentro do orçamento.
 
-**Solução:** rode `npm run db:seed`, depois `node exemplos/atualizar-datas.js`, ou use uma `dataEntrega` mais próxima ou um `orcamentoTotal` maior.
+**Solução:** rode `npm run db:seed`, depois `npm run exemplos` (e use os arquivos de `exemplos/gerados/`), ou use uma `dataEntrega` mais próxima ou um `orcamentoTotal` maior.
 
 ### Erro 422 "A data de entrega do projeto já passou"
 
-**Causa:** a `dataEntrega` enviada é hoje ou anterior a hoje.
+**Causa:** a `dataEntrega` enviada é hoje ou anterior a hoje. Com os exemplos, acontece quando as cópias de `exemplos/gerados/` foram geradas há mais de 60 dias, ou quando o comando aponta para um modelo de `exemplos/` em vez da cópia.
 
-**Solução:** envie uma data futura; para os arquivos de `exemplos/`, rode `node exemplos/atualizar-datas.js`.
+**Solução:** rode `npm run exemplos` de novo (regrava `exemplos/gerados/` com hoje + 60 dias) e envie os arquivos de `exemplos/gerados/`. Os modelos de `exemplos/` não mudam, então o `git status` continua limpo. Fora dos exemplos, envie uma data futura.
 
 ## Documentação técnica
 

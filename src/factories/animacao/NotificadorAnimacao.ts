@@ -1,12 +1,13 @@
 import type { PapelTecnico, Projeto } from '../../domain/entities/Projeto';
-import { ProjetoAnimacao } from '../../domain/entities/ProjetoAnimacao';
+import type { ProjetoAnimacao } from '../../domain/entities/ProjetoAnimacao';
 import { NotificadorPorTipo } from '../../events/observadores/NotificadorPorTipo';
+import { VisitanteBase } from '../../visitors/VisitanteBase';
 
 export class NotificadorAnimacao extends NotificadorPorTipo {
   readonly nome = 'notificador-animacao';
 
   protected textoRecomendacao(projeto: Projeto): string {
-    const tecnica = projeto instanceof ProjetoAnimacao ? `${projeto.tecnica}, ${projeto.quadrosPorSegundo} qps` : 'técnica a definir';
+    const { tecnica } = dadosDoAviso(projeto);
     return `Animação "${projeto.titulo}" (${tecnica}): equipe sugerida. Reserve as estações de render para os efeitos visuais.`;
   }
 
@@ -15,7 +16,38 @@ export class NotificadorAnimacao extends NotificadorPorTipo {
   }
 
   protected textoEquipeFinalizada(projeto: Projeto): string {
-    const softwares = projeto instanceof ProjetoAnimacao && projeto.softwares.length > 0 ? projeto.softwares.join(', ') : 'a definir';
-    return `Equipe da animação "${projeto.titulo}" completa: acesso ao pipeline liberado (softwares: ${softwares}).`;
+    const { softwares } = dadosDoAviso(projeto);
+    return `Equipe da animação "${projeto.titulo}" completa: acesso ao pipeline liberado (softwares: ${softwares.length > 0 ? softwares.join(', ') : 'a definir'}).`;
   }
+}
+
+interface DadosAvisoAnimacao {
+  tecnica: string;
+  softwares: readonly string[];
+}
+
+// Lê os dados dos avisos pelo despacho duplo. Um projeto do tipo sem a subclasse (registro
+// antigo) cai em visitarProjeto e recebe os valores neutros.
+class LeitorAnimacao extends VisitanteBase<DadosAvisoAnimacao> {
+  private dados: DadosAvisoAnimacao = { tecnica: '', softwares: [] };
+
+  override visitarProjeto(projeto: Projeto): void {
+    super.visitarProjeto(projeto);
+    this.dados = { tecnica: 'técnica a definir', softwares: [] };
+  }
+
+  override visitarProjetoAnimacao(projeto: ProjetoAnimacao): void {
+    super.visitarProjeto(projeto);
+    this.dados = { tecnica: `${projeto.tecnica}, ${projeto.quadrosPorSegundo} qps`, softwares: projeto.softwares };
+  }
+
+  resultado(): DadosAvisoAnimacao {
+    return this.dados;
+  }
+}
+
+function dadosDoAviso(projeto: Projeto): DadosAvisoAnimacao {
+  const leitor = new LeitorAnimacao();
+  projeto.aceitar(leitor);
+  return leitor.resultado();
 }

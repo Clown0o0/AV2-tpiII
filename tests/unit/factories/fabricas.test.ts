@@ -271,6 +271,37 @@ describe('Notificadores por tipo', () => {
     expect(enviadas('PUBLICITARIO')[2]?.texto).toMatch(/^Publicidade: o papel EDITOR/);
   });
 
+  it('lê os dados do aviso pela subclasse do tipo e ignora projetos de outro tipo', async () => {
+    const tipos = ['DOCUMENTARIO', 'ANIMACAO', 'PUBLICITARIO'] as const;
+    const projetos = [
+      new ProjetoDocumentario(dadosProjeto({ detalhes: { tema: 'Rios urbanos', entrevistados: ['A', 'B', 'C'] } })),
+      new ProjetoAnimacao(dadosProjeto({ detalhes: { tecnica: 'STOP_MOTION', quadrosPorSegundo: 12, softwares: ['Dragonframe', 'Blender'] } })),
+      new ProjetoPublicitario(dadosProjeto({ detalhes: { marca: 'Café Aurora', canais: ['TV', 'Web'] } })),
+    ];
+    const textos = new Map<TipoCaptacao, string[]>();
+    for (const tipo of tipos) {
+      const notificador = { DOCUMENTARIO: NotificadorDocumentario, ANIMACAO: NotificadorAnimacao, PUBLICITARIO: NotificadorPublicitario }[tipo];
+      const instancia = new notificador(tipo);
+      for (const projeto of projetos) {
+        instancia.atualizar({ nome: EVENTOS.RECOMENDACAO_GERADA, payload: eventoGerado(projeto) });
+        instancia.atualizar({ nome: EVENTOS.EQUIPE_FINALIZADA, payload: eventoGerado(projeto) });
+      }
+      textos.set(tipo, instancia.enviadas.map((n) => n.texto));
+    }
+    expect(textos.get('DOCUMENTARIO')).toEqual([
+      'Documentário "Filme Teste": equipe sugerida. Providencie as autorizações de uso de imagem dos 3 entrevistado(s).',
+      'Equipe do documentário "Filme Teste" fechada: confira o cronograma de entrevistas sobre "Rios urbanos".',
+    ]);
+    expect(textos.get('ANIMACAO')).toEqual([
+      'Animação "Filme Teste" (STOP_MOTION, 12 qps): equipe sugerida. Reserve as estações de render para os efeitos visuais.',
+      'Equipe da animação "Filme Teste" completa: acesso ao pipeline liberado (softwares: Dragonframe, Blender).',
+    ]);
+    expect(textos.get('PUBLICITARIO')).toEqual([
+      'Peça publicitária de Café Aurora: equipe sugerida. Envie a proposta para aprovação da agência.',
+      'Equipe da campanha "Filme Teste" confirmada (canais: TV, Web).',
+    ]);
+  });
+
   it('registro único: cada notificador é adicionado uma vez, e um aviso por evento publicado', async () => {
     const { emitter, enviadas, notificadores } = montar();
     // 4 notificadores, um por fábrica (o de ficção não reage a nada); adicionar de novo não duplica
