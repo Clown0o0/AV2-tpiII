@@ -1,5 +1,6 @@
 import { lerListaTextos, lerNumeroPositivo, lerTexto } from './detalhesProjeto';
 import { Projeto, type AjustesProjeto, type DadosProjeto, type DetalhesProjeto } from './Projeto';
+import type { Visitante } from './Visitante';
 
 export type DetalhesPublicitario = {
   marca: string;
@@ -44,5 +45,9 @@ export class ProjetoPublicitario extends Projeto {
       canais: [...this.canais],
       ...(this.duracaoMaxInformada !== undefined ? { duracaoMaxSegundos: this.duracaoMaxInformada } : {}),
     };
+  }
+
+  override aceitar(visitante: Visitante): void {
+    visitante.visitarProjetoPublicitario(this);
   }
 }

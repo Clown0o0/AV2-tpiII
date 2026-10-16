@@ -2,26 +2,34 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { construirApp } from '../../src/app';
+import type { OrigemDosProfissionais } from '../../src/domain/ports/FonteDeProfissionais';
+import type { ProjetoJson, RecomendacaoJson } from '../../src/routes/serializadores';
 import type { PapelTecnico, Projeto, TipoCaptacao } from '../../src/domain/entities/Projeto';
 import { Projeto as ProjetoBase, type DadosProjeto } from '../../src/domain/entities/Projeto';
 import { lerTexto } from '../../src/domain/entities/detalhesProjeto';
 import { RecomendacaoEventEmitter } from '../../src/events/RecomendacaoEventEmitter';
-import { AuditoriaObserver } from '../../src/events/observers/AuditoriaObserver';
-import { EmailObserver } from '../../src/events/observers/EmailObserver';
-import { NotificadorPorTipo } from '../../src/events/observers/NotificadorPorTipo';
+import { AuditoriaObservador } from '../../src/events/observadores/AuditoriaObservador';
+import { EmailObservador } from '../../src/events/observadores/EmailObservador';
+import { NotificadorPorTipo } from '../../src/events/observadores/NotificadorPorTipo';
 import { FabricaProjetoBase, type FabricaProjeto } from '../../src/factories/FabricaProjeto';
-import { FabricaProjetoRegistry } from '../../src/factories/FabricaProjetoRegistry';
+import { RegistroFabricas } from '../../src/factories/RegistroFabricas';
 import { FabricaAnimacao } from '../../src/factories/animacao/FabricaAnimacao';
 import { FabricaDocumentario } from '../../src/factories/documentario/FabricaDocumentario';
 import { OrquestradorPadrao } from '../../src/orchestration/OrquestradorPadrao';
-import { SistemaRecomendacao } from '../../src/services/SistemaRecomendacao';
 import { CossenoStrategy } from '../../src/strategies/CossenoStrategy';
+import type { RecomendacaoStrategy } from '../../src/strategies/RecomendacaoStrategy';
 import { RecomendadorPorTipo } from '../../src/strategies/RecomendadorPorTipo';
+import { RelatorioVisitor } from '../../src/visitors/RelatorioVisitor';
 import { ValidacaoConsistenciaVisitor } from '../../src/visitors/ValidacaoConsistenciaVisitor';
-import { criarProfissional, dadosProjeto, DATA_ENTREGA, DATA_REFERENCIA, elencoCompleto } from '../support/fixtures';
+import { criarProfissional, dadosProjeto, DATA_ENTREGA, DATA_REFERENCIA, elencoCompleto, OPCOES_FABRICA } from '../support/fixtures';
 import { InMemoryProfissionalRepository, InMemoryProjetoRepository, LoggerMemoria } from '../support/InMemoryRepositories';
+import { criarSistemaDeTeste } from '../support/sistema';
 
-type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+interface RespostaRecomendacao {
+  projeto: ProjetoJson;
+  recomendacao: RecomendacaoJson;
+  fonteProfissionais: OrigemDosProfissionais;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Tipo novo definido SÓ aqui: realidade virtual. Prova que um tipo novo não exige mudar
@@ -64,25 +72,29 @@ class NotificadorRealidadeVirtual extends NotificadorPorTipo {
 
 class FabricaRealidadeVirtual extends FabricaProjetoBase {
   readonly tipo = REALIDADE_VIRTUAL;
+  comEstrategia(base: RecomendacaoStrategy): FabricaRealidadeVirtual {
+    return new FabricaRealidadeVirtual(this.opcoesComEstrategia(base));
+  }
   criarProjeto = (dados: DadosProjeto) => new ProjetoRealidadeVirtual(dados);
   criarValidador = (dataReferencia = new Date()) => new ValidadorRealidadeVirtual(dataReferencia);
   criarRecomendador = () => new RecomendadorRealidadeVirtual(this.opcoes.estrategiaBase);
   criarNotificador = () => new NotificadorRealidadeVirtual(this.tipo, this.opcoes.logger);
+  criarRelatorio = () => new RelatorioVisitor();
 }
 
 // ---------------------------------------------------------------------------------------------
 
-/** Sobe o app como o server.ts: registry padrão (+ extras) e um notificador por fábrica, uma vez. */
+/** Sobe o app como o server.ts: registro padrão (+ extras) e um notificador por fábrica, uma vez. */
 function montarApp(extras: FabricaProjeto[] = []) {
   const logger = new LoggerMemoria();
-  const fabricas = FabricaProjetoRegistry.padrao({ logger });
+  const fabricas = RegistroFabricas.padrao({ logger });
   for (const fabrica of extras) fabricas.registrar(fabrica);
   const notificadores = new Map(fabricas.todas().map((f) => [f.tipo, f.criarNotificador()]));
-  const email = new EmailObserver(logger);
-  const auditoria = new AuditoriaObserver(logger);
+  const email = new EmailObservador(logger);
+  const auditoria = new AuditoriaObservador(logger);
   const eventos = new RecomendacaoEventEmitter().registrar(email, auditoria, ...notificadores.values());
   const projetos = new InMemoryProjetoRepository();
-  const service = new SistemaRecomendacao({
+  const service = criarSistemaDeTeste({
     profissionais: new InMemoryProfissionalRepository(elencoCompleto()),
     projetos,
     eventos,
@@ -114,10 +126,10 @@ async function post(app: FastifyInstance, payload: object) {
   return app.inject({ method: 'POST', url: '/projetos/recomendar', payload });
 }
 
-async function recomendar(app: FastifyInstance, payload: object): Promise<Json> {
+async function recomendar(app: FastifyInstance, payload: object): Promise<RespostaRecomendacao> {
   const resposta = await post(app, payload);
   expect(resposta.statusCode).toBe(201);
-  return resposta.json();
+  return resposta.json<RespostaRecomendacao>();
 }
 
 describe('Fábricas: a mesma requisição com tipos diferentes gera ecossistemas coerentes com o tipo', () => {
@@ -137,7 +149,7 @@ describe('Fábricas: a mesma requisição com tipos diferentes gera ecossistemas
     expect(projeto.detalhes).toEqual(detalhes);
     // recomendação: mesma estratégia escolhida, scores ajustados pelo recomendador do tipo
     expect(recomendacao.estrategia).toBe('COSSENO');
-    expect(Object.fromEntries(recomendacao.equipe.map((m: Json) => [m.papel, m.score]))).toEqual(scores);
+    expect(Object.fromEntries(recomendacao.equipe.map((m) => [m.papel, m.score]))).toEqual(scores);
 
     // validação do relatório: regras do tipo
     const { validacao, relatorio } = (await app.inject(`/recomendacoes/${recomendacao.id}/relatorio`)).json();
@@ -159,6 +171,29 @@ describe('Fábricas: a mesma requisição com tipos diferentes gera ecossistemas
     await app.close();
   });
 
+  it('só o relatório da animação traz as métricas de renderização', async () => {
+    const { app } = montarApp();
+    for (const tipo of ['FICCAO', 'DOCUMENTARIO', 'ANIMACAO', 'PUBLICITARIO'] as const) {
+      const { recomendacao } = await recomendar(app, { ...corpoBase, tipoCaptacao: tipo });
+      const { relatorio } = (await app.inject(`/recomendacoes/${recomendacao.id}/relatorio`)).json();
+      if (tipo !== 'ANIMACAO') {
+        expect(relatorio).not.toHaveProperty('metricasRenderizacao');
+        continue;
+      }
+      // 95 min * 60 s * 24 qps (padrão da animação)
+      expect(relatorio.metricasRenderizacao).toEqual({
+        descricao: expect.stringMatching(/^Estimativas/),
+        tecnica: '2D',
+        quadrosPorSegundo: 24,
+        duracaoEstimadaMin: 95,
+        totalQuadrosEstimado: 136800,
+        custoEstimadoPorQuadro: Math.round((relatorio.financeiro.custoEquipe / 136800) * 100) / 100,
+        papeisEfeitosVisuaisPreenchidos: 0,
+      });
+    }
+    await app.close();
+  });
+
   it('o mesmo serviço troca de fábrica a cada pedido sem misturar famílias', async () => {
     const criados: Array<[TipoCaptacao, string]> = [];
     // Espia: delega à fábrica real e anota a classe de cada objeto criado.
@@ -174,10 +209,11 @@ describe('Fábricas: a mesma requisição com tipos diferentes gera ecossistemas
         criarValidador: (data) => anotar(fabrica.criarValidador(data)),
         criarRecomendador: () => anotar(fabrica.criarRecomendador()),
         criarNotificador: () => anotar(fabrica.criarNotificador()),
+        criarRelatorio: () => anotar(fabrica.criarRelatorio()),
       };
     };
-    const fabricas = new FabricaProjetoRegistry(FabricaProjetoRegistry.padrao().todas().map(espiar));
-    const service = new SistemaRecomendacao({
+    const fabricas = new RegistroFabricas(RegistroFabricas.padrao().todas().map(espiar));
+    const service = criarSistemaDeTeste({
       profissionais: new InMemoryProfissionalRepository(elencoCompleto()),
       projetos: new InMemoryProjetoRepository(),
       eventos: new RecomendacaoEventEmitter(),
@@ -193,10 +229,10 @@ describe('Fábricas: a mesma requisição com tipos diferentes gera ecossistemas
     }
 
     const familia: Record<string, string[]> = {
-      FICCAO: ['Projeto', 'CossenoStrategy', 'ValidacaoConsistenciaVisitor'],
-      DOCUMENTARIO: ['ProjetoDocumentario', 'RecomendadorDocumentario', 'ValidadorDocumentario'],
-      ANIMACAO: ['ProjetoAnimacao', 'RecomendadorAnimacao', 'ValidadorAnimacao'],
-      PUBLICITARIO: ['ProjetoPublicitario', 'RecomendadorPublicitario', 'ValidadorPublicitario'],
+      FICCAO: ['Projeto', 'CossenoStrategy', 'ValidacaoConsistenciaVisitor', 'RelatorioVisitor'],
+      DOCUMENTARIO: ['ProjetoDocumentario', 'RecomendadorDocumentario', 'ValidadorDocumentario', 'RelatorioVisitor'],
+      ANIMACAO: ['ProjetoAnimacao', 'RecomendadorAnimacao', 'ValidadorAnimacao', 'RelatorioAnimacaoVisitor'],
+      PUBLICITARIO: ['ProjetoPublicitario', 'RecomendadorPublicitario', 'ValidadorPublicitario', 'RelatorioVisitor'],
     };
     for (const [tipo, classe] of criados) expect(familia[tipo]).toContain(classe);
     expect(new Set(criados.map(([, classe]) => classe))).toEqual(new Set(Object.values(familia).flat()));
@@ -213,14 +249,14 @@ describe('Fábricas: a mesma requisição com tipos diferentes gera ecossistemas
     };
     const escolhido = (fabrica: FabricaProjeto) =>
       new OrquestradorPadrao(fabrica).orquestrar(entrada).selecionados[0]?.escolhido.profissional.id;
-    expect(escolhido(new FabricaAnimacao())).toBe('vfx');
-    expect(escolhido(new FabricaDocumentario())).toBe('pesquisador');
+    expect(escolhido(new FabricaAnimacao(OPCOES_FABRICA))).toBe('vfx');
+    expect(escolhido(new FabricaDocumentario(OPCOES_FABRICA))).toBe('pesquisador');
   });
 });
 
 describe('Extensibilidade: tipo novo (realidade virtual) sem tocar no orquestrador nem no serviço', () => {
   it('fluxo completo pela API com a FabricaRealidadeVirtual registrada', async () => {
-    const { app, eventos, avisos, projetos } = montarApp([new FabricaRealidadeVirtual()]);
+    const { app, eventos, avisos, projetos } = montarApp([new FabricaRealidadeVirtual(OPCOES_FABRICA)]);
     const corpo = {
       ...corpoBase,
       tipoCaptacao: REALIDADE_VIRTUAL,
@@ -235,7 +271,7 @@ describe('Extensibilidade: tipo novo (realidade virtual) sem tocar no orquestrad
     expect(projeto).toMatchObject({ tipoCaptacao: REALIDADE_VIRTUAL, detalhes: { plataforma: 'Apple Vision Pro' } });
     expect(projetos.projetos.get(projeto.id)).toBeInstanceOf(ProjetoRealidadeVirtual);
     // DIRETOR_FOTOGRAFIA-top tem camera 0.8 -> afinidade (0.8 + 0) / 2 = 0.4
-    expect(recomendacao.equipe.find((m: Json) => m.papel === 'DIRETOR_FOTOGRAFIA').score).toBe(0.88);
+    expect(recomendacao.equipe.find((m) => m.papel === 'DIRETOR_FOTOGRAFIA')?.score).toBe(0.88);
 
     const sub = await app.inject({ method: 'POST', url: `/recomendacoes/${recomendacao.id}/membros/DIRETOR/substituir` });
     expect(sub.statusCode).toBe(200);
@@ -318,14 +354,14 @@ describe('Projetos-modelo (Prototype) pela API', () => {
       estrategia: 'ORCAMENTO_REDUZIDO',
       detalhes: { tecnica: '3D', softwares: ['Maya'], quadrosPorSegundo: 24 },
     });
-    expect(projeto.papeis.map((p: Json) => p.papel)).toEqual(['DIRETOR', 'EFEITOS_VISUAIS', 'SONOPLASTA']);
+    expect(projeto.papeis.map((p) => p.papel)).toEqual(['DIRETOR', 'EFEITOS_VISUAIS', 'SONOPLASTA']);
     expect(recomendacao.estrategia).toBe('ORCAMENTO_REDUZIDO');
 
     // dois pedidos do mesmo modelo são projetos independentes
     const outro = await recomendar(ctx.app, { ...pedido, modelo: 'animacao', papeis: [{ papel: 'DIRETOR', peso: 1 }], tipoCaptacao: 'ANIMACAO' });
     expect(outro.projeto.id).not.toBe(projeto.id);
     expect(outro.projeto.papeis).toEqual([{ papel: 'DIRETOR', peso: 1 }]);
-    expect(outro.projeto.detalhes.softwares).toEqual(['Blender']);
+    expect(outro.projeto.detalhes?.softwares).toEqual(['Blender']);
   });
 
   it('erros: modelo inexistente, tipo diferente do modelo e atributo inválido -> 422; corpo incompleto -> 400', async () => {

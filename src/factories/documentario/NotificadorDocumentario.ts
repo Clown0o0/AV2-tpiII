@@ -1,6 +1,6 @@
 import type { PapelTecnico, Projeto } from '../../domain/entities/Projeto';
 import { ProjetoDocumentario } from '../../domain/entities/ProjetoDocumentario';
-import { NotificadorPorTipo } from '../../events/observers/NotificadorPorTipo';
+import { NotificadorPorTipo } from '../../events/observadores/NotificadorPorTipo';
 
 export class NotificadorDocumentario extends NotificadorPorTipo {
   readonly nome = 'notificador-documentario';

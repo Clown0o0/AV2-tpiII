@@ -2,24 +2,27 @@ import { ErroValidacao } from '../domain/errors';
 import type { TipoCaptacao } from '../domain/entities/Projeto';
 import { FabricaAnimacao } from './animacao/FabricaAnimacao';
 import { FabricaDocumentario } from './documentario/FabricaDocumentario';
-import type { FabricaProjeto, OpcoesFabrica } from './FabricaProjeto';
+import { CossenoStrategy } from '../strategies/CossenoStrategy';
+import type { CatalogoFabricas, FabricaProjeto, OpcoesFabrica } from './FabricaProjeto';
 import { FabricaFiccao } from './ficcao/FabricaFiccao';
 import { FabricaPublicitario } from './publicitario/FabricaPublicitario';
 
 // Único lugar que liga tipo de projeto -> fábrica. Um tipo novo só precisa ser registrado aqui.
-export class FabricaProjetoRegistry {
+export class RegistroFabricas implements CatalogoFabricas {
   private readonly fabricas = new Map<TipoCaptacao, FabricaProjeto>();
 
   constructor(fabricas: readonly FabricaProjeto[] = []) {
     for (const fabrica of fabricas) this.registrar(fabrica);
   }
 
-  static padrao(opcoes: Partial<OpcoesFabrica> = {}): FabricaProjetoRegistry {
-    return new FabricaProjetoRegistry([
-      new FabricaDocumentario(opcoes),
-      new FabricaFiccao(opcoes),
-      new FabricaAnimacao(opcoes),
-      new FabricaPublicitario(opcoes),
+  // Cosseno é a estratégia base padrão, a mesma assumida pelo Projeto quando o produtor não escolhe.
+  static padrao(opcoes: Partial<OpcoesFabrica> = {}): RegistroFabricas {
+    const completas: OpcoesFabrica = { estrategiaBase: new CossenoStrategy(), ...opcoes };
+    return new RegistroFabricas([
+      new FabricaDocumentario(completas),
+      new FabricaFiccao(completas),
+      new FabricaAnimacao(completas),
+      new FabricaPublicitario(completas),
     ]);
   }
 

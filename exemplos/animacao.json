@@ -1,0 +1,16 @@
+{
+  "titulo": "Órbita",
+  "produtorId": "produtor-2",
+  "genero": "Ficção científica",
+  "duracaoEstimadaMin": 12,
+  "orcamentoTotal": 90000,
+  "dataEntrega": "2026-12-14",
+  "tipoCaptacao": "ANIMACAO",
+  "localizacao": "Recife",
+  "estrategia": "COSSENO",
+  "detalhes": { "tecnica": "3D", "softwares": ["Blender", "Houdini"], "quadrosPorSegundo": 24 },
+  "papeis": [
+    { "papel": "DIRETOR", "peso": 2 },
+    { "papel": "EFEITOS_VISUAIS", "peso": 3 }
+  ]
+}

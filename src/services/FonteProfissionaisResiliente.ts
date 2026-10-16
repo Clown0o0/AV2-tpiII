@@ -1,22 +1,19 @@
 import type { Profissional } from '../domain/entities/Profissional';
-import type { FiltroCandidatos, ProfissionalRepository } from '../domain/ports/ProfissionalRepository';
-import type { FonteProfissionais } from '../events/EventTypes';
+import type {
+  CicloDeVidaDoCatalogo,
+  FiltroCandidatos,
+  FonteDeProfissionais,
+  OrigemDosProfissionais,
+  ResultadoBusca,
+} from '../domain/ports/FonteDeProfissionais';
+import type { ProfissionalRepository } from '../domain/ports/ProfissionalRepository';
 
-// Valores padrão. O timeout fica abaixo dos 2 s exigidos para a recomendação.
+// Abaixo dos 2 s exigidos para a recomendação.
 export const TIMEOUT_PADRAO_MS = 1500;
-// Por quanto tempo o cadastro carregado em memória é considerado atual.
 export const TTL_CATALOGO_PADRAO_MS = 60000;
 
-export interface ResultadoBusca {
-  profissionais: Profissional[];
-  fonte: FonteProfissionais;
-  erro?: string;
-}
-
 export interface OpcoesFonteResiliente {
-  // Tempo máximo de espera pelo repositório antes do fallback.
   timeoutMs: number;
-  // Validade do catálogo em memória; vencido, a próxima busca recarrega do repositório.
   ttlMs: number;
   aoFalhar?: (erro: unknown, operacao: string) => void;
 }
@@ -27,13 +24,11 @@ interface Catalogo {
   carregadoEm: number;
 }
 
-// Mantém o cadastro de profissionais em memória e filtra os candidatos lá, em vez de consultar
-// o banco a cada requisição. Só uma carga roda por vez (as demais esperam a mesma), e uma carga
-// lenta não é cancelada pelo timeout: ela termina e atualiza o catálogo. Se o repositório falhar,
-// usa o último catálogo carregado (resultado parcial) ou devolve vazio. Nunca lança erro.
-export class FonteProfissionaisResiliente {
+// Catálogo em memória para não consultar o banco a cada requisição; em falha do repositório,
+// devolve o último catálogo (CACHE) ou vazio (INDISPONIVEL), sem lançar erro.
+export class FonteProfissionaisResiliente implements FonteDeProfissionais, CicloDeVidaDoCatalogo {
   private catalogo: Catalogo | undefined;
-  private carga: Promise<Catalogo> | undefined;
+  private cargaEmAndamento: Promise<Catalogo> | undefined;
   private temporizador: NodeJS.Timeout | undefined;
   private readonly opcoes: OpcoesFonteResiliente;
 
@@ -66,25 +61,18 @@ export class FonteProfissionaisResiliente {
     }
   }
 
-  // Recarrega o cadastro. Chamadas simultâneas compartilham a mesma consulta.
   atualizar(): Promise<void> {
-    return this.carregar().then(() => undefined);
+    return this.carregarUmaVezPorVez().then(() => undefined);
   }
 
-  // Marca o catálogo como vencido (ex.: foi encontrado um profissional que não existe mais).
   invalidar(): void {
     if (this.catalogo) this.catalogo = { ...this.catalogo, carregadoEm: Number.NEGATIVE_INFINITY };
   }
 
-  // Carrega o catálogo agora e o recarrega em segundo plano antes de vencer, para que as
-  // requisições não esperem pelo banco.
   async iniciar(): Promise<void> {
     this.parar();
-    if (this.opcoes.ttlMs > 0) {
-      this.temporizador = setInterval(() => void this.aquecer(), Math.max(1000, this.opcoes.ttlMs / 2));
-      this.temporizador.unref();
-    }
-    await this.aquecer();
+    this.agendarRecargaAntesDeVencer();
+    await this.recarregarRegistrandoFalha();
   }
 
   parar(): void {
@@ -92,20 +80,26 @@ export class FonteProfissionaisResiliente {
     this.temporizador = undefined;
   }
 
-  private async aquecer(): Promise<void> {
+  private agendarRecargaAntesDeVencer(): void {
+    if (this.opcoes.ttlMs <= 0) return;
+    this.temporizador = setInterval(() => void this.recarregarRegistrandoFalha(), Math.max(1000, this.opcoes.ttlMs / 2));
+    this.temporizador.unref();
+  }
+
+  private async recarregarRegistrandoFalha(): Promise<void> {
     try {
-      await this.carregar();
+      await this.carregarUmaVezPorVez();
     } catch (erro) {
       this.opcoes.aoFalhar?.(erro, 'atualizarCatalogo');
     }
   }
 
-  private async obterCatalogo(operacao: string): Promise<{ catalogo?: Catalogo; fonte: FonteProfissionais; erro?: string }> {
+  private async obterCatalogo(operacao: string): Promise<{ catalogo?: Catalogo; fonte: OrigemDosProfissionais; erro?: string }> {
     if (this.catalogo && Date.now() - this.catalogo.carregadoEm < this.opcoes.ttlMs) {
       return { catalogo: this.catalogo, fonte: 'REPOSITORIO' };
     }
     try {
-      return { catalogo: await this.comTimeout(this.carregar()), fonte: 'REPOSITORIO' };
+      return { catalogo: await this.comTimeout(this.carregarUmaVezPorVez()), fonte: 'REPOSITORIO' };
     } catch (erro) {
       this.opcoes.aoFalhar?.(erro, operacao);
       return {
@@ -116,8 +110,10 @@ export class FonteProfissionaisResiliente {
     }
   }
 
-  private carregar(): Promise<Catalogo> {
-    this.carga ??= this.repositorio
+  // Chamadas simultâneas reaproveitam a mesma consulta; uma carga lenta não é cancelada pelo
+  // timeout: ela termina e atualiza o catálogo para as próximas buscas.
+  private carregarUmaVezPorVez(): Promise<Catalogo> {
+    this.cargaEmAndamento ??= this.repositorio
       .listarTodos()
       .then((lista) => {
         const catalogo: Catalogo = {
@@ -129,9 +125,9 @@ export class FonteProfissionaisResiliente {
         return catalogo;
       })
       .finally(() => {
-        this.carga = undefined;
+        this.cargaEmAndamento = undefined;
       });
-    return this.carga;
+    return this.cargaEmAndamento;
   }
 
   private comTimeout<T>(promessa: Promise<T>): Promise<T> {

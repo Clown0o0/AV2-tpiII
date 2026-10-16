@@ -42,12 +42,25 @@ describe('Projeto', () => {
     [{ estrategia: 'X' as never }, /Estratégia/],
     [{ orcamentoTotal: -1 }, /Orçamento/],
     [{ dataEntrega: new Date('invalida') }, /Data de entrega/],
+    [{ dataEntrega: new Date('+010000-01-01T00:00:00.000Z') }, /Data de entrega/],
     [{ papeis: [] }, /ao menos um papel/],
     [{ papeis: [{ papel: 'CAMERA' as never, peso: 1 }] }, /Papel técnico inválido/],
     [{ papeis: [{ papel: 'EDITOR' as const, peso: 1 }, { papel: 'EDITOR' as const, peso: 2 }] }, /mais de uma vez/],
     [{ papeis: [{ papel: 'EDITOR' as const, peso: 0 }] }, /Peso/],
   ])('rejeita dados inválidos %#', (dados, erro) => {
     expect(() => new Projeto(dadosProjeto(dados))).toThrow(erro);
+  });
+
+  it('papéis, data de entrega e data de criação saem como cópia', () => {
+    const projeto = new Projeto(dadosProjeto({ papeis: [{ papel: 'DIRETOR', peso: 2, competenciasDesejadas: { direcao: 1 } }] }));
+    (projeto.papeis[0] as { peso: number }).peso = 99;
+    (projeto.papeis[0]?.competenciasDesejadas as Record<string, number>).direcao = 0.1;
+    projeto.dataEntrega.setFullYear(1990);
+    projeto.criadoEm.setFullYear(1990);
+    expect(projeto.papeis).toEqual([{ papel: 'DIRETOR', peso: 2, competenciasDesejadas: { direcao: 1 } }]);
+    expect(projeto.perfilDesejado('DIRETOR')).toEqual({ direcao: 1 });
+    expect(projeto.dataEntrega).toEqual(DATA_ENTREGA);
+    expect(projeto.criadoEm.getFullYear()).not.toBe(1990);
   });
 
   it('calcula a variação de uma alteração', () => {
@@ -76,6 +89,18 @@ describe('Profissional', () => {
     expect(p.mediaAvaliacoes()).toBeNull();
   });
 
+  it('disponibilidade, competências, avaliações e datas saem como cópia', () => {
+    const p = criarProfissional({ notas: [['x', 4]] });
+    (p.disponibilidade[0] as { fim: Date }).fim.setFullYear(1990);
+    (p.competencias as unknown[]).length = 0;
+    (p.avaliacoes as unknown[]).length = 0;
+    p.avaliacoes[0]?.criadaEm.setFullYear(1990);
+    expect(p.disponivelEntre(new Date('2026-01-01'), new Date('2027-01-01'))).toBe(true);
+    expect(p.competencias).not.toHaveLength(0);
+    expect(p.mediaAvaliacoes()).toBe(4);
+    expect(p.avaliacoes[0]?.criadaEm.getFullYear()).not.toBe(1990);
+  });
+
   it('compara localização sem diferenciar maiúsculas/acentos', () => {
     expect(criarProfissional({ localizacao: 'São Paulo' }).mesmaLocalizacao(' sao paulo ')).toBe(true);
     const recife = criarProfissional({ localizacao: 'Recife' });
@@ -102,6 +127,17 @@ describe('Recomendacao e Convite — transições de estado', () => {
       r.adicionarMembro(new MembroRecomendado({ papel: 'EDITOR', profissionalId: 'x', score: 1, custo: 1, rodada: 2 })),
     ).toThrow(/já possui membro ativo/);
     expect(r.substituir('DIRETOR')).toBeUndefined();
+  });
+
+  it('quem recebe um membro pela recomendação só lê; o status muda pelos métodos da recomendação', () => {
+    const r = recomendacao();
+    const membro = r.membroAtivo('EDITOR');
+    // @ts-expect-error transicionar não faz parte de MembroRecomendadoLeitura
+    void membro?.transicionar;
+    expect(membro?.status).toBe('SUGERIDO');
+    expect(r.membros).not.toBe(r.membros);
+    r.convidar('EDITOR');
+    expect(r.membroAtivo('EDITOR')?.status).toBe('CONVIDADO');
   });
 
   it('recomendação finalizada ou obsoleta não aceita alterações', () => {

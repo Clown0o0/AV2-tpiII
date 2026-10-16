@@ -1,10 +1,9 @@
-import { Avaliacao } from '../domain/entities/Avaliacao';
 import { similaridadeCosseno } from '../domain/entities/Competencia';
 import type { Profissional } from '../domain/entities/Profissional';
 import type { PapelTecnico, Projeto } from '../domain/entities/Projeto';
-import type { MembroRecomendado, Recomendacao } from '../domain/entities/Recomendacao';
+import type { MembroRecomendadoLeitura } from '../domain/entities/Recomendacao';
 import { arredondar } from '../strategies/RecomendacaoStrategy';
-import type { ProjetoVisitor } from './ProjetoVisitor';
+import { VisitanteBase } from './VisitanteBase';
 
 export interface CompatibilidadePapel {
   papel: PapelTecnico;
@@ -40,55 +39,51 @@ export const PESOS_COMPATIBILIDADE: PesosCompatibilidade = {
 };
 
 // Calcula uma métrica de compatibilidade geral da equipe com o projeto.
-export class CompatibilidadeEquipeVisitor implements ProjetoVisitor<ResultadoCompatibilidade> {
-  private projeto?: Projeto;
-  private readonly membrosPorProfissional = new Map<string, MembroRecomendado>();
+export class CompatibilidadeEquipeVisitor extends VisitanteBase<ResultadoCompatibilidade> {
+  private readonly membrosPorProfissional = new Map<string, MembroRecomendadoLeitura>();
   private readonly porPapel: CompatibilidadePapel[] = [];
 
-  constructor(private readonly pesos: PesosCompatibilidade = PESOS_COMPATIBILIDADE) {}
-
-  visitarProjeto(projeto: Projeto): void {
-    this.projeto = projeto;
+  constructor(private readonly pesos: PesosCompatibilidade = PESOS_COMPATIBILIDADE) {
+    super();
   }
 
-  visitarRecomendacao(_recomendacao: Recomendacao): void {
-    // A compatibilidade depende apenas dos membros e profissionais.
-  }
-
-  visitarMembro(membro: MembroRecomendado): void {
+  override visitarMembro(membro: MembroRecomendadoLeitura): void {
     this.membrosPorProfissional.set(membro.profissionalId, membro);
   }
 
-  visitarProfissional(profissional: Profissional): void {
+  override visitarProfissional(profissional: Profissional): void {
     const membro = this.membrosPorProfissional.get(profissional.id);
-    if (!membro || !this.projeto) return;
-    const competencias = similaridadeCosseno(this.projeto.perfilDesejado(membro.papel), profissional.vetorCompetencias());
-    const media = profissional.mediaAvaliacoes();
-    const reputacao = media === null ? this.pesos.reputacaoSemAvaliacao : media / Avaliacao.NOTA_MAXIMA;
-    const localizacao = profissional.mesmaLocalizacao(this.projeto.localizacao) ? 1 : 0;
-    this.porPapel.push({
+    const projeto = this.projetoVisitado;
+    if (membro && projeto) this.porPapel.push(this.compatibilidadeDoMembro(projeto, membro, profissional));
+  }
+
+  resultado(): ResultadoCompatibilidade {
+    const projeto = this.obterProjetoVisitado();
+    const somaPesos = projeto.papeis.reduce((soma, p) => soma + p.peso, 0);
+    const indice = projeto.papeis.reduce((soma, requerido) => soma + requerido.peso * this.compatibilidadeDoPapel(requerido.papel), 0);
+    return {
+      indiceGeral: arredondar(indice / somaPesos),
+      cobertura: arredondar(this.porPapel.length / projeto.papeis.length),
+      porPapel: [...this.porPapel],
+    };
+  }
+
+  private compatibilidadeDoMembro(projeto: Projeto, membro: MembroRecomendadoLeitura, profissional: Profissional): CompatibilidadePapel {
+    const competencias = similaridadeCosseno(projeto.perfilDesejado(membro.papel), profissional.vetorCompetencias());
+    const reputacao = profissional.reputacao(this.pesos.reputacaoSemAvaliacao);
+    const localizacao = profissional.proximidadeDe(projeto.localizacao);
+    const ponderada = this.pesos.competencias * competencias + this.pesos.reputacao * reputacao + this.pesos.localizacao * localizacao;
+    return {
       papel: membro.papel,
       profissionalId: profissional.id,
       competencias: arredondar(competencias),
       reputacao: arredondar(reputacao),
       localizacao,
-      compatibilidade: arredondar(
-        this.pesos.competencias * competencias + this.pesos.reputacao * reputacao + this.pesos.localizacao * localizacao,
-      ),
-    });
+      compatibilidade: arredondar(ponderada),
+    };
   }
 
-  resultado(): ResultadoCompatibilidade {
-    if (!this.projeto) throw new Error('Visitor não percorreu nenhum projeto');
-    const somaPesos = this.projeto.papeis.reduce((soma, p) => soma + p.peso, 0);
-    const indice = this.projeto.papeis.reduce((soma, requerido) => {
-      const item = this.porPapel.find((p) => p.papel === requerido.papel);
-      return soma + requerido.peso * (item?.compatibilidade ?? 0);
-    }, 0);
-    return {
-      indiceGeral: arredondar(indice / somaPesos),
-      cobertura: arredondar(this.porPapel.length / this.projeto.papeis.length),
-      porPapel: [...this.porPapel],
-    };
+  private compatibilidadeDoPapel(papel: PapelTecnico): number {
+    return this.porPapel.find((p) => p.papel === papel)?.compatibilidade ?? 0;
   }
 }

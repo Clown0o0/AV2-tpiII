@@ -1,5 +1,6 @@
 # cinebridge-recomendacao
 
+[![CI](https://github.com/Clown0o0/AV2-tpiII/actions/workflows/ci.yml/badge.svg)](https://github.com/Clown0o0/AV2-tpiII/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-v24.15.0-339933?style=flat&logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-v5.9.3-3178C6?style=flat&logo=typescript&logoColor=white)
 ![Fastify](https://img.shields.io/badge/Fastify-v5.12.5-000000?style=flat&logo=fastify&logoColor=white)
@@ -12,262 +13,438 @@
 ![@types/node](https://img.shields.io/badge/%40types%2Fnode-v24.13.6-3178C6?style=flat&logo=typescript&logoColor=white)
 ![@types/jest](https://img.shields.io/badge/%40types%2Fjest-v30.0.0-3178C6?style=flat&logo=typescript&logoColor=white)
 
-## Tecnologias e versões
+Microsserviço da plataforma cinebridge que recebe um projeto audiovisual e recomenda uma equipe técnica dentro do orçamento e do prazo.
 
-As versões dos badges são as do `package.json` (fixas, sem `^`, iguais às do `package-lock.json`) e as da máquina em que o projeto foi testado. O `package.json` exige Node.js `>=24`. Complementos:
+## Índice
 
-| Ferramenta | Versão |
-|---|---|
-| npm | 11.12.1 |
-| PostgreSQL | 18.6 (versão testada) |
-| actions/checkout (CI) | v4 |
-| actions/setup-node (CI) | v4, com `node-version: 24` |
-| Sistemas do CI | `ubuntu-24.04` e `windows-latest` |
-| Sistemas suportados | Windows 10 ou superior; Ubuntu 24.04.03 ou superior e derivadas |
+1. [Visão geral](#visão-geral)
+2. [Início rápido](#início-rápido)
+3. [Pré-requisitos](#pré-requisitos)
+4. [Passo a passo](#passo-a-passo)
+5. [Variáveis de ambiente](#variáveis-de-ambiente)
+6. [Endpoints](#endpoints)
+7. [Organização do código](#organização-do-código)
+8. [Compatibilidade e CI](#compatibilidade-e-ci)
+9. [Solução de problemas](#solução-de-problemas)
+10. [Documentação técnica](#documentação-técnica)
 
-No CI, `v4`, `node-version: 24` e `windows-latest` são rótulos; a versão exata é escolhida pelo GitHub Actions a cada execução.
+## Visão geral
 
-## Sobre o projeto
+O serviço recebe o projeto (gênero, orçamento, prazo, localização e papéis técnicos exigidos) e devolve um profissional sugerido por papel. É a atividade ATVII: sobre a base da ATVI, acrescenta projetos-modelo clonados e uma fábrica por tipo de produção (ficção, documentário, animação e publicitário).
 
-Microsserviço de recomendação e orquestração de equipes da plataforma cinebridge. Ele recebe um projeto audiovisual (gênero, orçamento, prazo, localização e papéis técnicos exigidos) e monta uma equipe de profissionais recomendada, respeitando o orçamento e o prazo.
+Fluxo de uso:
 
-Projeto da atividade ATVII. Sobre a base da ATVI (Strategy, Template Method, Observer e Visitor), a ATVII acrescenta **Prototype** (projetos-modelo clonados), **Factory Method** e **Abstract Factory** (uma fábrica por tipo de produção: ficção, documentário, animação e publicitário, cada uma criando o próprio projeto, validador, recomendador e notificador). A análise crítica da ATVI, a descrição dos padrões, o diagrama de classes e as decisões de projeto estão em [docs/ATVII.md](docs/ATVII.md).
-
-## Como funciona
-
-1. O produtor envia o projeto para `POST /projetos/recomendar`, escolhendo a estratégia de recomendação:
-   - `COSSENO`: similaridade entre as competências do profissional e o perfil do papel;
-   - `FILTRAGEM_COLABORATIVA`: avaliações de produtores com gosto parecido;
-   - `ORCAMENTO_REDUZIDO`: prioriza profissionais mais baratos, locais e bem avaliados.
-2. O serviço devolve um profissional sugerido por papel, dentro do orçamento e disponível até a data de entrega.
+1. O produtor envia o projeto para `POST /projetos/recomendar`, escolhendo a estratégia: `COSSENO` (competências parecidas com o perfil do papel), `FILTRAGEM_COLABORATIVA` (avaliações de produtores com gosto parecido) ou `ORCAMENTO_REDUZIDO` (mais baratos, locais e bem avaliados).
+2. O serviço devolve a equipe sugerida, dentro do orçamento e disponível até a `dataEntrega`.
 3. O produtor aceita, rejeita ou substitui cada sugestão; a substituição refaz só aquele papel.
-4. Ao aceitar uma sugestão, o profissional recebe um convite; a resposta dele é avisada ao produtor.
-5. Com todos os papéis confirmados, a equipe é finalizada e são emitidos eventos para os serviços de gerenciamento de projetos e financeiro.
-6. Se o orçamento ou o prazo mudarem de forma significativa (`PATCH /projetos/:id`), a equipe inteira é recalculada.
+4. Ao aceitar uma sugestão, o profissional recebe um convite e responde aceitando ou recusando; o produtor é avisado.
+5. Com todos os convites aceitos, a equipe é finalizada e são emitidos eventos para os serviços de gerenciamento de projetos e financeiro.
+6. Se o orçamento ou o prazo mudarem de forma significativa (`PATCH /projetos/:id`), a equipe é recalculada.
 
-Cada profissional sugerido recebe um aviso de interesse do produtor. Cada ação gera notificações simuladas (e-mail e mensagem interna) e um registro de auditoria em log JSON; documentário, animação e publicidade recebem também avisos próprios do tipo.
+Cada ação gera notificações simuladas (e-mail e mensagem interna, em log) e um registro de auditoria em JSON. O `tipoCaptacao` (`FICCAO`, `DOCUMENTARIO`, `ANIMACAO` ou `PUBLICITARIO`) escolhe a fábrica do projeto; os atributos próprios do tipo vão em `detalhes`. Com `modelo`, o projeto parte de um projeto-modelo clonado.
 
-O `tipoCaptacao` (`FICCAO`, `DOCUMENTARIO`, `ANIMACAO` ou `PUBLICITARIO`) escolhe a fábrica do projeto, e os atributos próprios do tipo vão em `detalhes`. Com `modelo`, o projeto parte de um projeto-modelo clonado.
+| Padrão | Onde está no código |
+|---|---|
+| Strategy | `src/strategies/` (`CossenoStrategy`, `FiltragemColaborativaStrategy`, `OrcamentoReduzidoStrategy`, `RegistroEstrategias`) |
+| Template Method | `src/orchestration/OrquestradorEquipe.ts` (fluxo fixo) e `OrquestradorPadrao.ts` |
+| Observer | `src/events/` (`RecomendacaoEventEmitter`) e `src/events/observadores/` |
+| Visitor | `src/visitors/` (`VisitanteBase`, validação, compatibilidade e relatório) e `src/domain/entities/Visitante.ts` |
+| Prototype | `src/prototypes/RegistroPrototipos.ts` e `Projeto.clonar()` em `src/domain/entities/Projeto.ts` |
+| Factory Method e Abstract Factory | `src/factories/FabricaProjeto.ts`, `src/factories/RegistroFabricas.ts` e uma pasta por tipo em `src/factories/` |
 
-O cadastro de profissionais fica em memória (`FonteProfissionaisResiliente`), para atender 100 requisições simultâneas com até 10 mil profissionais sem consultar o banco a cada pedido:
+## Início rápido
 
-- os candidatos são filtrados em memória;
-- é carregado antes de o servidor aceitar requisições e recarregado em segundo plano a cada metade do `CATALOGO_TTL_MS`; só uma carga roda por vez, e requisições simultâneas compartilham a mesma;
-- um profissional novo aparece em até `CATALOGO_TTL_MS` (padrão 60 s); se um sugerido foi removido do banco nesse intervalo, a equipe é recomposta com o cadastro recarregado;
-- se o banco ficar indisponível, o último cadastro carregado continua em uso (resposta marcada como `parcial`).
+O caminho mais curto, para quem já tem Node.js 24, Git e PostgreSQL instalados e rodando. Cada passo é explicado em [Passo a passo](#passo-a-passo).
 
-Variáveis opcionais no `.env`:
+**Windows (PowerShell):**
+
+```powershell
+git clone https://github.com/Clown0o0/AV2-tpiII.git
+cd AV2-tpiII
+npm ci
+Copy-Item .env.example .env
+notepad .env
+npx prisma migrate deploy
+npm run db:seed
+node exemplos/atualizar-datas.js
+npm run dev
+```
+
+**Linux (bash):**
 
 ```bash
-CATALOGO_TTL_MS=60000          # validade do cadastro em memória
-PROFISSIONAIS_TIMEOUT_MS=1500  # espera máxima pelo banco antes do fallback
+git clone https://github.com/Clown0o0/AV2-tpiII.git
+cd AV2-tpiII
+npm ci
+cp .env.example .env
+nano .env
+npx prisma migrate deploy
+npm run db:seed
+node exemplos/atualizar-datas.js
+npm run dev
 ```
 
-Organização do código:
+No editor aberto pelo `notepad`/`nano`, troque `USUARIO` e `SENHA` na `DATABASE_URL` pelos do seu PostgreSQL e salve. Com o servidor rodando, abra **outro terminal na pasta `AV2-tpiII`** e envie um projeto:
 
-```
-src/
-├── domain/          Entidades (Projeto e subtipos, Profissional, Competencia, Avaliacao, Recomendacao, Convite) e interfaces de repositório
-├── prototypes/      Prototype: projetos-modelo clonados (RegistroPrototipos)
-├── factories/       Abstract Factory + Factory Method: uma fábrica por tipo e o registro tipo -> fábrica
-│   ├── ficcao/          FabricaFiccao, NotificadorFiccao
-│   ├── documentario/    FabricaDocumentario, RecomendadorDocumentario, ValidadorDocumentario, NotificadorDocumentario
-│   ├── animacao/        FabricaAnimacao, RecomendadorAnimacao, ValidadorAnimacao, NotificadorAnimacao
-│   └── publicitario/    FabricaPublicitario, RecomendadorPublicitario, ValidadorPublicitario, NotificadorPublicitario
-├── strategies/      Strategy: algoritmos de recomendação (e a base dos recomendadores por tipo)
-├── orchestration/   Template Method: OrquestradorEquipe (fluxo fixo) e OrquestradorPadrao (recebe a fábrica)
-├── events/          Observer: Publicador (RecomendacaoEventEmitter) e observadores com atualizar(evento) (e-mail, mensagem interna, auditoria, base dos notificadores por tipo)
-├── visitors/        Visitor: validação, compatibilidade e relatório da equipe
-├── repositories/    Acesso ao banco com Prisma
-├── services/        Regras de uso (SistemaRecomendacao) e tolerância a falhas
-└── routes/          Rotas REST
+```powershell
+curl.exe http://localhost:3000/health
+curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/documentario.json"
 ```
 
-## Como rodar
+No Linux, use `curl` no lugar de `curl.exe` (ou rode uma vez `alias curl.exe=curl` nesse terminal e copie os comandos como estão).
 
-O projeto tem uma única pasta de código (não há frontend separado). Todos os comandos `npm` e `npx` devem ser executados na **raiz do projeto**: a pasta `AV2-tpiII/` criada pelo `git clone`, onde ficam o `package.json` e o `README.md`.
+## Pré-requisitos
+
+| Ferramenta | Versão | Como conferir |
+|---|---|---|
+| Node.js | 24 (testado com 24.15.0; o `package.json` exige `>=24`) | `node -v` |
+| npm | o que vem com o Node 24 (testado com 11.12.1) | `npm -v` |
+| PostgreSQL | testado com 18.6 | `psql --version` |
+| Git | qualquer versão recente | `git --version` |
+| curl | para os exemplos; já vem no Windows 10+ como `curl.exe` | `curl.exe --version` (Windows) ou `curl --version` (Linux) |
+
+Como instalar:
+
+| | Windows 10+ | Ubuntu 24.04.03+ e derivadas |
+|---|---|---|
+| Node.js 24 | instalador de https://nodejs.org (ou `winget install OpenJS.NodeJS.LTS`, conferindo se `node -v` mostra 24) | `nvm install 24` (https://github.com/nvm-sh/nvm) ou o repositório da NodeSource |
+| PostgreSQL | instalador de https://www.postgresql.org/download/windows/ (cria o serviço `postgresql-x64-NN`) | `sudo apt install postgresql` e `sudo systemctl start postgresql` |
+| Git | https://git-scm.com/download/win | `sudo apt install git` |
+
+No Windows, o instalador do PostgreSQL não coloca o `psql` no `PATH`; veja [psql não é reconhecido](#psql-não-é-reconhecido-windows). O projeto não precisa do `psql`: o Prisma cria o banco e as tabelas.
+
+## Passo a passo
+
+Todos os comandos `npm`, `npx` e `node` rodam na **raiz do projeto**: a pasta `AV2-tpiII/` criada pelo `git clone`, onde ficam o `package.json` e este `README.md`.
 
 ```
 AV2-tpiII/            <- raiz do projeto: rode os comandos aqui
-├── docs/             documentação da ATVII (ATVII.md)
-├── prisma/
-├── src/
-├── tests/
+├── docs/             documentação técnica (ATVII.md)
+├── exemplos/         corpos JSON usados nos exemplos de requisição
+├── prisma/           schema, migrations e seed
+├── src/              código do serviço
+├── tests/            testes (Jest)
+├── .env.example      modelo do .env
 ├── package.json
 └── README.md
 ```
 
-Pré-requisitos: Node.js 24, npm e PostgreSQL rodando. Verifique em qualquer pasta:
+Os comandos são iguais no PowerShell e no bash, exceto onde aparecem separados.
+
+### 1. Clonar
+
+**Onde:** qualquer pasta.
 
 ```bash
-node -v
-npm -v
-psql --version
+git clone https://github.com/Clown0o0/AV2-tpiII.git
+cd AV2-tpiII
 ```
 
-1. Baixe o projeto e entre na raiz dele:
-   ```bash
-   git clone https://github.com/Clown0o0/AV2-tpiII.git
-   cd AV2-tpiII
-   ```
+**Resultado esperado:** a pasta `AV2-tpiII` criada, e o terminal dentro dela.
 
-2. **Na raiz do projeto (`AV2-tpiII/`)**, instale as dependências (isso também gera o cliente do Prisma). As versões estão fixas no `package.json`, então o `npm install` instala exatamente as versões listadas nos badges acima:
-   ```bash
-   npm install
-   ```
+### 2. Instalar as dependências
 
-3. **Na raiz do projeto (`AV2-tpiII/`)**, crie um arquivo chamado `.env` (ao lado do `package.json`) com o conteúdo abaixo, trocando usuário, senha, porta e nome do banco pelos do seu PostgreSQL:
-   ```bash
-   # formato: postgresql://USUARIO:SENHA@HOST:PORTA/NOME_DO_BANCO?schema=public
-   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/cinebridge_recomendacao?schema=public"
-   PORT=3000
-   ```
-   O `.env` não vai para o Git (está no `.gitignore`), então sua senha fica só na sua máquina. Sem esse arquivo, o Prisma e o servidor não acham o banco.
-
-4. **Em qualquer pasta** (este comando fala direto com o PostgreSQL, não depende do projeto), crie o banco:
-   ```bash
-   createdb -U postgres cinebridge_recomendacao
-   # ou: psql -U postgres -c "CREATE DATABASE cinebridge_recomendacao;"
-   ```
-
-5. **Na raiz do projeto (`AV2-tpiII/`)**, crie as tabelas:
-   ```bash
-   npx prisma migrate deploy
-   ```
-   Devem aparecer as duas migrations do projeto: `20260925000000_init` (tabelas da ATVI) e `20261015000000_tipos_de_projeto` (tipo `PUBLICITARIO` e coluna `detalhes`), seguidas de `All migrations have been successfully applied.`
-
-6. (Opcional) **Na raiz do projeto (`AV2-tpiII/`)**, popule o banco com profissionais de exemplo. **O seed apaga os dados existentes antes de inserir.** O padrão é 300 profissionais; use `SEED_PROFISSIONAIS` para mudar:
-   ```bash
-   npm run db:seed
-   # Linux/macOS: SEED_PROFISSIONAIS=10000 npm run db:seed
-   # PowerShell:  $env:SEED_PROFISSIONAIS=10000; npm run db:seed
-   ```
-
-7. **Na raiz do projeto (`AV2-tpiII/`)**, suba o servidor. Este terminal fica ocupado enquanto o servidor estiver rodando (Ctrl+C para parar):
-   ```bash
-   npm run dev
-   ```
-   Ou, compilando com o `tsc` e executando o `.js` gerado em `dist/`:
-   ```bash
-   npm run build
-   npm start
-   ```
-
-8. **Em outro terminal, em qualquer pasta**, confirme que está no ar:
-   ```bash
-   curl http://localhost:3000/health
-   # resposta: {"status":"ok"}
-   ```
-
-Testes (com cobertura mínima de 80%). **Na raiz do projeto (`AV2-tpiII/`)**; não precisam do PostgreSQL nem do servidor rodando:
+**Onde:** raiz do projeto.
 
 ```bash
-npm run test
+npm ci
 ```
 
-## Compatibilidade
+**Resultado esperado:** no fim aparecem `Generated Prisma Client (v6.19.3)` (o `postinstall` roda o `prisma generate`) e `added ... packages`. O `npm ci` instala exatamente as versões do `package-lock.json`. Avisos de `npm audit` não impedem o uso.
 
-Sistemas suportados:
+**Se falhar:** [Node abaixo da versão 24](#node-abaixo-da-versão-24), [postinstall ou prisma generate falhando](#postinstall-ou-prisma-generate-falhando).
 
-- **Windows 10 ou superior** (cmd ou PowerShell);
-- **Ubuntu 24.04.03 ou superior** e distribuições derivadas do Ubuntu 24.04 (Linux Mint 22.x, Pop!_OS 24.04, Kubuntu/Xubuntu/Lubuntu 24.04 etc.).
+### 3. Criar o `.env`
 
-Pré-requisitos por sistema:
+**Onde:** raiz do projeto.
 
-| | Windows 10+ | Ubuntu 24.04.03+ e derivadas |
-|---|---|---|
-| Node.js 24 | instalador de https://nodejs.org (ou `winget install OpenJS.NodeJS.LTS`, conferindo `node -v` = 24) | `nvm install 24` (https://github.com/nvm-sh/nvm) ou o repositório da NodeSource |
-| PostgreSQL | instalador de https://www.postgresql.org/download/windows/ (serviço `postgresql-x64-NN`) | `sudo apt install postgresql` e `sudo systemctl start postgresql` |
+```powershell
+# Windows (PowerShell)
+Copy-Item .env.example .env
+notepad .env
+```
 
-O código não tem scripts de shell nem caminhos fixos de sistema: os scripts do `package.json` rodam iguais no cmd, no PowerShell e no bash, e os caminhos usados nos testes são montados com `node:path`. O `.gitattributes` fixa o fim de linha em LF, para o checkout no Windows não alterar os arquivos. A única diferença entre sistemas é como definir variáveis de ambiente na linha de comando (veja o passo 6 de "Como rodar").
+```bash
+# Linux
+cp .env.example .env
+nano .env
+```
 
-O GitHub Actions (`.github/workflows/ci.yml`) roda `npm ci`, `npx prisma generate`, `npx tsc --noEmit`, `npm run build` e `npm test` em `ubuntu-24.04` e `windows-latest` com Node 24. Os testes não precisam de PostgreSQL.
+Troque `USUARIO` e `SENHA` na `DATABASE_URL` pelos do seu PostgreSQL (e host, porta ou nome do banco, se forem outros) e salve. As outras variáveis são opcionais; veja [Variáveis de ambiente](#variáveis-de-ambiente). O `.env` está no `.gitignore`, então a senha não vai para o Git.
 
-Quem já tem o banco da ATVI só precisa rodar `npx prisma migrate deploy` (passo 5 de "Como rodar"): apenas a migration nova da ATVII é aplicada.
+**Resultado esperado:** um arquivo `.env` ao lado do `package.json`.
+
+**Se falhar:** [.env ausente](#env-ausente-ou-database_url-não-definida), [usuário ou senha inválidos](#usuário-ou-senha-inválidos).
+
+### 4. Criar o banco e as tabelas
+
+**Onde:** raiz do projeto. O PostgreSQL precisa estar rodando.
+
+```bash
+npx prisma migrate deploy
+```
+
+**Resultado esperado:** se o banco ainda não existir, `PostgreSQL database cinebridge_recomendacao created at localhost:5432`; depois `2 migrations found in prisma/migrations`, a aplicação de `20260925000000_init` e `20261015000000_tipos_de_projeto`, e `All migrations have been successfully applied.` Quem já tem o banco da ATVI recebe só a migration nova.
+
+**Se falhar:** [não conecta ao banco](#não-conecta-ao-banco), [usuário ou senha inválidos](#usuário-ou-senha-inválidos), [tabelas não existem ou migration com erro](#tabelas-não-existem-ou-migration-com-erro).
+
+### 5. Popular com profissionais de exemplo
+
+**Onde:** raiz do projeto.
+
+> **Atenção:** o seed **apaga todos os dados** do banco da `DATABASE_URL` (projetos, recomendações, convites e profissionais) antes de inserir.
+
+```bash
+npm run db:seed
+```
+
+**Resultado esperado:**
+
+```
+Limpando dados e gerando 300 profissionais...
+  300/300
+Seed concluído. Produtores com histórico de avaliações: produtor-1 ... produtor-25
+```
+
+A agenda dos profissionais é relativa ao dia em que o seed roda: de 1 mês atrás até 3 a 18 meses à frente. Para outra quantidade, defina `SEED_PROFISSIONAIS` (de 0 a 1000000):
+
+```powershell
+# Windows (PowerShell)
+$env:SEED_PROFISSIONAIS=10000; npm run db:seed
+```
+
+```bash
+# Linux
+SEED_PROFISSIONAIS=10000 npm run db:seed
+```
+
+**Se falhar:** [variável de ambiente inválida](#variável-de-ambiente-inválida), [não conecta ao banco](#não-conecta-ao-banco).
+
+### 6. Ajustar as datas dos exemplos
+
+**Onde:** raiz do projeto.
+
+```bash
+node exemplos/atualizar-datas.js
+```
+
+**Resultado esperado:** uma linha por arquivo, com a data de hoje + 60 dias:
+
+```
+animacao.json: dataEntrega = AAAA-MM-DD
+documentario.json: dataEntrega = AAAA-MM-DD
+modelo-publicitario.json: dataEntrega = AAAA-MM-DD
+```
+
+A API recusa `dataEntrega` no passado e só sugere quem tem agenda até a entrega. Uma data fixa nos arquivos acabaria vencendo; o script troca a `dataEntrega` dos `exemplos/*.json` por uma data que cabe na agenda do seed. Rode de novo se os exemplos ficarem velhos. Quando a data muda, o `git status` mostra os arquivos de `exemplos/` como alterados; é esperado.
+
+### 7. Rodar o servidor
+
+**Onde:** raiz do projeto. O terminal fica ocupado enquanto o servidor roda; Ctrl+C para parar.
+
+Em desenvolvimento (recarrega ao salvar um arquivo):
+
+```bash
+npm run dev
+```
+
+Ou compilado (o `tsc` gera `dist/` e o `npm start` roda `dist/server.js`):
+
+```bash
+npm run build
+npm start
+```
+
+**Resultado esperado:** linhas de log em JSON, entre elas `"msg":"Server listening at http://127.0.0.1:3000"`.
+
+**Se falhar:** [`npm start` sem build](#npm-start-sem-build), [porta em uso](#porta-em-uso), [variável de ambiente inválida](#variável-de-ambiente-inválida), [.env ausente](#env-ausente-ou-database_url-não-definida).
+
+### 8. Conferir se está no ar
+
+**Onde:** outro terminal, qualquer pasta.
+
+```bash
+curl.exe http://localhost:3000/health
+```
+
+**Resultado esperado:** `{"status":"ok"}`. No Linux, use `curl` (veja [curl.exe não encontrado](#curlexe-não-encontrado-linux)).
+
+**Se falhar:** [curl não funciona no PowerShell](#curl-não-funciona-no-powershell).
+
+### 9. Rodar os testes
+
+**Onde:** raiz do projeto. Não precisam do PostgreSQL nem do servidor rodando (usam repositórios em memória).
+
+```bash
+npm test
+```
+
+**Resultado esperado:** `Test Suites: 25 passed, 25 total`, `Tests: 248 passed, 248 total` e a tabela de cobertura (o mínimo exigido é 80%).
+
+Use sempre `npm test`, e não `npx jest`: o Fastify carrega pacotes ESM, e o Jest só consegue com a opção `--experimental-vm-modules` do Node, que o script `test` já passa. Veja [`npx jest` falha](#npx-jest-falha-com-must-use-import-to-load-es-module).
+
+## Variáveis de ambiente
+
+Todas são lidas e validadas em `src/composicao/configuracao.ts` (o seed lê `DATABASE_URL` e `SEED_PROFISSIONAIS`). Valor inválido encerra o processo com código 1 e uma mensagem dizendo qual variável e qual valor é aceito. Variável vazia vale como ausente. Uma variável definida no terminal tem prioridade sobre o `.env`.
+
+| Variável | Obrigatória? | Padrão | O que faz |
+|---|---|---|---|
+| `DATABASE_URL` | sim | — | Conexão com o PostgreSQL: `postgresql://USUARIO:SENHA@HOST:PORTA/BANCO?schema=public`. Usada pelo servidor, pelo seed e pelo Prisma |
+| `PORT` | não | `3000` | Porta HTTP (inteiro de 1 a 65535) |
+| `HOST` | não | `0.0.0.0` | Endereço em que o servidor escuta |
+| `LOG_LEVEL` | não | `info` | Nível de log: `fatal`, `error`, `warn`, `info`, `debug`, `trace` ou `silent` |
+| `CATALOGO_TTL_MS` | não | `60000` | Validade, em ms, do cadastro de profissionais em memória; recarregado em segundo plano a cada metade. `0` desliga o cache (lê o banco a cada pedido) |
+| `PROFISSIONAIS_TIMEOUT_MS` | não | `1500` | Espera máxima, em ms, pelo banco ao ler profissionais; depois disso usa o último cadastro carregado |
+| `SEED_PROFISSIONAIS` | não (só no seed) | `300` | Quantidade de profissionais criados pelo `npm run db:seed` (0 a 1000000) |
+
+O cadastro de profissionais fica em memória para atender 100 requisições simultâneas com 10 mil profissionais sem consultar o banco a cada pedido. Um profissional novo aparece em até `CATALOGO_TTL_MS`. Se a leitura de profissionais falhar ou passar de `PROFISSIONAIS_TIMEOUT_MS`, a recomendação usa o último cadastro carregado e sai marcada como `parcial`. Com o banco inteiro fora do ar, as rotas que gravam respondem 500 `ERRO_INTERNO`, o `/health` continua respondendo e o serviço volta sozinho quando o banco volta.
 
 ## Endpoints
 
-| Método | Caminho | O que faz |
+| Método | Caminho | Sucesso | O que faz |
+|---|---|---|---|
+| POST | `/projetos/recomendar` | 201 | Recebe o projeto (ou um `modelo` + ajustes) e devolve `projeto`, `recomendacao` e `fonteProfissionais` |
+| GET | `/projetos/modelos` | 200 | Lista as chaves aceitas em `modelo` |
+| PATCH | `/projetos/:id` | 200 | Altera `orcamentoTotal`, `dataEntrega`, `estrategia` ou `forcarReavaliacao`; devolve `projeto`, `alteracao`, `reavaliada` e `recomendacao` |
+| GET | `/recomendacoes/:id` | 200 | Estado da equipe (`equipe`, `historico`) e os `convites` |
+| GET | `/recomendacoes/:id/relatorio` | 200 | `relatorio`, `validacao` e `compatibilidade`; em animação, `relatorio.metricasRenderizacao` |
+| POST | `/recomendacoes/:id/membros/:papel/aceitar` | 201 | Aceita a sugestão e envia convite ao profissional; devolve `recomendacao` e `convite` |
+| POST | `/recomendacoes/:id/membros/:papel/rejeitar` | 200 | Rejeita a sugestão; o papel fica em aberto |
+| POST | `/recomendacoes/:id/membros/:papel/substituir` | 200 | Nova sugestão só para o papel (corpo opcional `{"estrategia": "..."}`); devolve `recomendacao` e `novoMembro` |
+| POST | `/convites/:id/responder` | 200 | O profissional responde `{"aceito": true}` ou `{"aceito": false}`; devolve `convite`, `recomendacao` e `equipeFinalizada` |
+| GET | `/health` | 200 | `{"status":"ok"}` |
+
+Papéis (`:papel` e `papeis[].papel`): `DIRETOR`, `DIRETOR_FOTOGRAFIA`, `SONOPLASTA`, `EDITOR`, `ROTEIRISTA`, `EFEITOS_VISUAIS`.
+
+Todo erro responde no mesmo formato, `{"erro": "CODIGO", "mensagem": "..."}`:
+
+| Status | `erro` | Quando |
 |---|---|---|
-| POST | `/projetos/recomendar` | Recebe o projeto (ou um `modelo` + ajustes) e devolve a equipe recomendada |
-| GET | `/projetos/modelos` | Lista as chaves dos projetos-modelo aceitas em `modelo` |
-| PATCH | `/projetos/:id` | Altera orçamento, prazo ou estratégia; recalcula a equipe se a mudança for significativa |
-| POST | `/recomendacoes/:id/membros/:papel/aceitar` | Aceita a sugestão e envia convite ao profissional |
-| POST | `/recomendacoes/:id/membros/:papel/rejeitar` | Rejeita a sugestão; o papel fica em aberto |
-| POST | `/recomendacoes/:id/membros/:papel/substituir` | Nova sugestão só para o papel (body opcional `{"estrategia": "..."}`) |
-| POST | `/convites/:id/responder` | Profissional responde `{"aceito": true}` ou `{"aceito": false}` |
-| GET | `/recomendacoes/:id` | Estado atual da equipe e dos convites |
-| GET | `/recomendacoes/:id/relatorio` | Relatório, validação e compatibilidade da equipe |
-| GET | `/health` | Verifica se o servidor está no ar |
+| 400 (413, 414, 415) | `REQUISICAO_INVALIDA` | JSON malformado, campo faltando ou de tipo errado, valor fora do limite (ex.: `orcamentoTotal` acima de 999999999999), texto com caractere nulo, corpo grande demais, parâmetro de URL longo demais, `content-type` não suportado |
+| 404 | `NAO_ENCONTRADO` | Projeto, recomendação ou convite inexistente; rota ou método inexistente |
+| 409 | `ESTADO_INVALIDO` | Ação que o estado atual não permite (aceitar duas vezes, alterar equipe finalizada etc.) |
+| 422 | `VALIDACAO` | Regra de negócio: `dataEntrega` no passado ou inválida, papel repetido, `modelo` inexistente, `detalhes` inválidos |
+| 500 | `ERRO_INTERNO` | Falha inesperada (ex.: banco fora do ar); o detalhe fica só no log |
 
-Papéis válidos: `DIRETOR`, `DIRETOR_FOTOGRAFIA`, `SONOPLASTA`, `EDITOR`, `ROTEIRISTA`, `EFEITOS_VISUAIS`.
+### Exemplos de requisição
 
-Exemplo de requisição: um documentário de baixo orçamento.
+**Onde:** raiz do projeto (os caminhos `@exemplos/...` são relativos a ela), com o servidor rodando. Os corpos estão em [`exemplos/`](exemplos/) e são enviados como arquivo com `--data-binary`, o que evita problemas de aspas e acentos no PowerShell. No Linux, use `curl` no lugar de `curl.exe`, ou rode uma vez `alias curl.exe=curl` no terminal.
 
-```bash
-curl -X POST http://localhost:3000/projetos/recomendar   -H "content-type: application/json"   -d '{
-    "titulo": "Memórias do Corporativo",
-    "produtorId": "produtor-1",
-    "genero": "Drama",
-    "duracaoEstimadaMin": 88,
-    "orcamentoTotal": 45000,
-    "dataEntrega": "2027-04-01T00:00:00Z",
-    "tipoCaptacao": "DOCUMENTARIO",
-    "localizacao": "São Paulo",
-    "estrategia": "ORCAMENTO_REDUZIDO",
-    "papeis": [
-      { "papel": "DIRETOR", "peso": 3 },
-      { "papel": "ROTEIRISTA", "peso": 2 },
-      { "papel": "SONOPLASTA", "peso": 1 }
-    ]
-  }'
-```
+Rode antes `node exemplos/atualizar-datas.js` ([passo 6](#6-ajustar-as-datas-dos-exemplos)). Nos comandos abaixo, troque `ID_DA_RECOMENDACAO`, `ID_DO_PROJETO` e `ID_DO_CONVITE` pelos valores das respostas anteriores.
 
-`tipoCaptacao` aceita `DOCUMENTARIO`, `FICCAO`, `ANIMACAO` ou `PUBLICITARIO`. A `dataEntrega` precisa ser uma data futura.
-
-Exemplo com atributos específicos do tipo (`detalhes`): uma animação em 3D.
+**1. Documentário** ([`exemplos/documentario.json`](exemplos/documentario.json), estratégia `ORCAMENTO_REDUZIDO`, com `detalhes` de documentário):
 
 ```bash
-curl -X POST http://localhost:3000/projetos/recomendar   -H "content-type: application/json"   -d '{
-    "titulo": "Órbita",
-    "produtorId": "produtor-2",
-    "genero": "Ficção científica",
-    "duracaoEstimadaMin": 12,
-    "orcamentoTotal": 90000,
-    "dataEntrega": "2027-06-01T00:00:00Z",
-    "tipoCaptacao": "ANIMACAO",
-    "localizacao": "Recife",
-    "detalhes": { "tecnica": "3D", "softwares": ["Blender", "Houdini"], "quadrosPorSegundo": 24 },
-    "papeis": [
-      { "papel": "DIRETOR", "peso": 2 },
-      { "papel": "EFEITOS_VISUAIS", "peso": 3 }
-    ]
-  }'
+curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/documentario.json"
 ```
 
-Exemplo a partir de um projeto-modelo: um comercial que usa o modelo `publicitario` e só troca a marca e a estratégia.
+Resposta 201: `{"projeto":{"id":"...",...},"recomendacao":{"id":"...","status":"EM_ANDAMENTO",...,"equipe":[{"papel":"DIRETOR","status":"SUGERIDO",...},...]},"fonteProfissionais":"REPOSITORIO"}`. Anote `recomendacao.id` (ID_DA_RECOMENDACAO).
+
+**2. Aceitar cada membro** (um comando por papel da `equipe`: `DIRETOR`, `ROTEIRISTA` e `SONOPLASTA` neste exemplo):
 
 ```bash
-curl http://localhost:3000/projetos/modelos
-# resposta: {"modelos":["ficcao","documentario","animacao","publicitario"]}
-
-curl -X POST http://localhost:3000/projetos/recomendar   -H "content-type: application/json"   -d '{
-    "modelo": "publicitario",
-    "titulo": "Verão Aurora",
-    "produtorId": "produtor-3",
-    "orcamentoTotal": 60000,
-    "dataEntrega": "2027-02-01T00:00:00Z",
-    "localizacao": "Rio de Janeiro",
-    "estrategia": "ORCAMENTO_REDUZIDO",
-    "detalhes": { "marca": "Café Aurora" }
-  }'
+curl.exe -X POST http://localhost:3000/recomendacoes/ID_DA_RECOMENDACAO/membros/DIRETOR/aceitar
 ```
 
-Os exemplos funcionam como estão no bash do Linux e do macOS. **No Windows** (PowerShell, cmd ou Git Bash), salve o JSON (o trecho entre `'{` e `}'`) num arquivo `projeto.json` em UTF-8 (o padrão do VS Code e do Bloco de Notas) e envie o arquivo, como em [Erro 400 "Request body size did not match Content-Length"](#erro-400-request-body-size-did-not-match-content-length-ou-body-is-not-valid-json).
+Resposta 201 com `"convite":{"id":"...","status":"PENDENTE",...}`. Anote o `convite.id` de cada papel.
+
+**3. Responder cada convite** ([`exemplos/resposta-convite.json`](exemplos/resposta-convite.json), `{"aceito": true}`):
+
+```bash
+curl.exe -X POST http://localhost:3000/convites/ID_DO_CONVITE/responder -H "content-type: application/json" --data-binary "@exemplos/resposta-convite.json"
+```
+
+Resposta 200 com `"equipeFinalizada":false` nos primeiros e `"equipeFinalizada":true` no último, quando a `recomendacao` passa a `"status":"FINALIZADA"`.
+
+**4. Consultar a equipe e o relatório:**
+
+```bash
+curl.exe http://localhost:3000/recomendacoes/ID_DA_RECOMENDACAO
+curl.exe http://localhost:3000/recomendacoes/ID_DA_RECOMENDACAO/relatorio
+```
+
+**5. Animação** ([`exemplos/animacao.json`](exemplos/animacao.json), técnica 3D a 24 quadros por segundo):
+
+```bash
+curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/animacao.json"
+curl.exe http://localhost:3000/recomendacoes/ID_DA_RECOMENDACAO/relatorio
+```
+
+O relatório da animação traz `relatorio.metricasRenderizacao`, por exemplo `{"descricao":"Estimativas derivadas da duração estimada, dos quadros por segundo e do custo da equipe recomendada.","tecnica":"3D","quadrosPorSegundo":24,"duracaoEstimadaMin":12,"totalQuadrosEstimado":17280,"custoEstimadoPorQuadro":...,"papeisEfeitosVisuaisPreenchidos":1}`.
+
+**6. Alterar o projeto da animação** ([`exemplos/alterar-projeto.json`](exemplos/alterar-projeto.json): orçamento de 90000 para 135000, +50%):
+
+```bash
+curl.exe -X PATCH http://localhost:3000/projetos/ID_DO_PROJETO -H "content-type: application/json" --data-binary "@exemplos/alterar-projeto.json"
+```
+
+Resposta 200 com `"alteracao":{"variacaoOrcamento":0.5,"variacaoPrazoDias":0,"estrategiaAlterada":false}`, `"reavaliada":true` e uma `recomendacao` nova. Em projeto com equipe finalizada (o documentário do item 3), a resposta é 409 `ESTADO_INVALIDO`.
+
+**7. A partir de um projeto-modelo** ([`exemplos/modelo-publicitario.json`](exemplos/modelo-publicitario.json): modelo `publicitario`, trocando título, marca, orçamento e estratégia):
+
+```bash
+curl.exe http://localhost:3000/projetos/modelos
+curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@exemplos/modelo-publicitario.json"
+```
+
+O primeiro responde `{"modelos":["ficcao","documentario","animacao","publicitario"]}`; o segundo, 201 com um projeto `PUBLICITARIO` e a equipe do modelo (`DIRETOR`, `DIRETOR_FOTOGRAFIA` e `EDITOR`).
+
+**8. Rejeitar ou substituir uma sugestão:**
+
+```bash
+curl.exe -X POST http://localhost:3000/recomendacoes/ID_DA_RECOMENDACAO/membros/EDITOR/substituir
+curl.exe -X POST http://localhost:3000/recomendacoes/ID_DA_RECOMENDACAO/membros/EDITOR/rejeitar
+```
+
+## Organização do código
+
+```
+src/
+├── server.ts             Ponto de entrada: lê a configuração, monta o app e trata encerramento e falhas não tratadas
+├── app.ts                Fastify: rotas, formato único de erro e 404
+├── composicao/           Raiz de composição (criarSistemaRecomendacao) e leitura das variáveis de ambiente (configuracao)
+├── compartilhado/        Utilitário de memoização usado pelos caches
+├── domain/
+│   ├── entities/         Projeto e subtipos, Profissional, Competencia, Avaliacao, Recomendacao, Convite, Visitante
+│   ├── ports/            Interfaces de repositório e da fonte de profissionais
+│   └── errors.ts         Erros de domínio com o status HTTP de cada um
+├── services/             SistemaRecomendacao (fachada) e colaboradores: OrquestradorDeRecomendacao, GestorDeConvites, GeradorDeRelatorio, PublicadorDeEventosDeRecomendacao, PoliticaDeReavaliacao, FonteProfissionaisResiliente
+├── orchestration/        Template Method: OrquestradorEquipe e OrquestradorPadrao
+├── strategies/           Strategy: cosseno, filtragem colaborativa, orçamento reduzido, base dos recomendadores por tipo e RegistroEstrategias
+├── factories/            Abstract Factory e Factory Method: FabricaProjeto, RegistroFabricas e uma pasta por tipo
+│   ├── ficcao/           FabricaFiccao, NotificadorFiccao
+│   ├── documentario/     FabricaDocumentario, RecomendadorDocumentario, ValidadorDocumentario, NotificadorDocumentario
+│   ├── animacao/         FabricaAnimacao, RecomendadorAnimacao, ValidadorAnimacao, NotificadorAnimacao, RelatorioAnimacaoVisitor
+│   └── publicitario/     FabricaPublicitario, RecomendadorPublicitario, ValidadorPublicitario, NotificadorPublicitario
+├── prototypes/           Prototype: RegistroPrototipos (projetos-modelo)
+├── visitors/             Visitor: VisitanteBase, validação, compatibilidade e relatório da equipe
+├── events/               Observer: RecomendacaoEventEmitter, tipos de evento e contrato do publicador
+│   └── observadores/     E-mail, mensagem interna, auditoria e a base dos notificadores por tipo
+├── repositories/         Acesso ao banco com Prisma
+└── routes/               Rotas REST, schemas JSON e serializadores
+tests/
+├── unit/                 Testes de cada camada
+├── integration/          API completa com repositórios em memória
+└── support/              Fixtures, repositórios em memória e montagem do sistema de teste
+prisma/                   schema.prisma, migrations e seed.ts
+exemplos/                 Corpos JSON dos exemplos e o script atualizar-datas.js
+docs/                     ATVII.md (documentação técnica)
+```
+
+## Compatibilidade e CI
+
+Sistemas suportados:
+
+- **Windows 10 ou superior** (PowerShell ou cmd);
+- **Ubuntu 24.04.03 ou superior** e derivadas do Ubuntu 24.04 (Linux Mint 22.x, Pop!_OS 24.04, Kubuntu/Xubuntu/Lubuntu 24.04 etc.).
+
+Os scripts do `package.json` não usam sintaxe de shell, então rodam iguais no PowerShell, no cmd e no bash. O `.gitattributes` fixa o fim de linha em LF. A diferença entre sistemas está em copiar arquivos, abrir o editor, definir variável na linha de comando e chamar o curl, e esses comandos aparecem separados neste README.
+
+O GitHub Actions (`.github/workflows/ci.yml`) roda `npm ci`, `npx prisma generate`, `npx tsc --noEmit`, `npm run build` e `npm test` em `ubuntu-24.04` e `windows-latest`, com `actions/setup-node@v4` e `node-version: 24`. Esses rótulos não fixam a versão exata, que o GitHub Actions escolhe a cada execução. Os testes não precisam de PostgreSQL.
 
 ## Solução de problemas
 
-Os comandos `npm` e `npx` desta seção também devem ser executados na raiz do projeto (`AV2-tpiII/`).
+Os comandos `npm`, `npx` e `node` desta seção rodam na raiz do projeto (`AV2-tpiII/`).
 
 ### Não conecta ao banco
 
@@ -279,16 +456,18 @@ Os comandos `npm` e `npx` desta seção também devem ser executados na raiz do 
 ```bash
 # Linux
 sudo systemctl start postgresql
-# Windows (PowerShell como administrador; o nome varia com a versão)
+```
+```powershell
+# Windows (PowerShell como administrador; o nome do serviço muda com a versão)
 Get-Service postgresql*
-Start-Service postgresql-x64-17
+Start-Service postgresql-x64-18
 ```
 
 ### Usuário ou senha inválidos
 
 **Sintoma:** `P1000: Authentication failed against database server`.
 
-**Causa:** usuário ou senha da `DATABASE_URL` não conferem.
+**Causa:** usuário ou senha da `DATABASE_URL` não conferem (inclusive se `USUARIO` e `SENHA` do `.env.example` não foram trocados).
 
 **Solução:** corrija no `.env`. Caracteres especiais na senha precisam ser codificados (ex.: `@` vira `%40`).
 
@@ -298,7 +477,7 @@ Start-Service postgresql-x64-17
 
 **Causa:** o banco ainda não foi criado.
 
-**Solução:**
+**Solução:** `npx prisma migrate deploy` cria o banco (se o usuário tiver permissão) e as tabelas. Sem permissão para criar bancos, crie com o usuário administrador do PostgreSQL e rode o `migrate deploy` de novo:
 ```bash
 createdb -U postgres cinebridge_recomendacao
 npx prisma migrate deploy
@@ -315,13 +494,70 @@ npx prisma migrate deploy
 - `npx prisma migrate dev` só é necessário se você alterar o `schema.prisma`.
 - Em banco de desenvolvimento, `npx prisma migrate reset` recria tudo (**apaga os dados**).
 
-### Versão do Node incompatível
+### .env ausente ou DATABASE_URL não definida
 
-**Sintoma:** `npm warn EBADENGINE Unsupported engine` ou erro ao iniciar.
+**Sintoma:** ao rodar `npm run dev`, `npm start` ou `npm run db:seed`:
+```
+Configuração inválida:
+  - DATABASE_URL não está definida: crie o .env a partir do .env.example ou defina a variável no ambiente
+```
+No `npx prisma migrate deploy`: `Environment variable not found: DATABASE_URL`.
 
-**Causa:** o projeto exige Node 24.
+**Causa:** não há `.env` na raiz do projeto (ou ele não tem `DATABASE_URL`).
 
-**Solução:** instale o Node 24 (https://nodejs.org ou `nvm install 24` e `nvm use 24`), apague a pasta `node_modules` e rode `npm install` de novo.
+**Solução:** crie o `.env` como no [passo 3](#3-criar-o-env).
+
+### Variável de ambiente inválida
+
+**Sintoma:** o servidor ou o seed encerra logo ao iniciar, com mensagens como:
+```
+Configuração inválida:
+  - PORT="abc" é inválida: use um número inteiro entre 1 e 65535
+  - LOG_LEVEL="xyz" é inválida: use um destes valores: fatal, error, warn, info, debug, trace, silent
+```
+
+**Causa:** valor fora do aceito em `PORT`, `LOG_LEVEL`, `CATALOGO_TTL_MS`, `PROFISSIONAIS_TIMEOUT_MS`, `SEED_PROFISSIONAIS` ou `DATABASE_URL` que não começa com `postgresql://`. A mensagem lista todas as variáveis com problema.
+
+**Solução:** corrija o valor no `.env` (ou no terminal) conforme a [tabela de variáveis](#variáveis-de-ambiente). Variável definida no terminal vale mais que o `.env`: no PowerShell, `Remove-Item Env:PORT` apaga uma definida por engano; no bash, `unset PORT`.
+
+### npm start sem build
+
+**Sintoma:** `Error: Cannot find module` apontando para `dist\server.js` (Windows) ou `dist/server.js` (Linux).
+
+**Causa:** `npm start` roda o código compilado em `dist/`, que só existe depois do build.
+
+**Solução:**
+```bash
+npm run build
+npm start
+```
+
+### npx jest falha com "Must use import to load ES Module"
+
+**Sintoma:** `npx jest` falha nas suítes de integração com `Must use import to load ES Module: ...node_modules\cookie\dist\index.js`.
+
+**Causa:** o Fastify depende de pacotes ESM, e o Jest só os carrega com a opção `--experimental-vm-modules` do Node.
+
+**Solução:** rode `npm test`, que já passa a opção. Para argumentos extras, use `npm test -- <argumentos>` (ex.: `npm test -- --runInBand`).
+
+### postinstall ou prisma generate falhando
+
+**Sintoma:** o `npm ci` termina com erro no `postinstall` (`prisma generate`), por exemplo ao baixar o engine do Prisma sem internet ou atrás de proxy. No Windows, também pode aparecer `EPERM: operation not permitted, rename '...query_engine-windows.dll.node.tmp...'` (no `npm ci` ou no `npx prisma generate`).
+
+**Causa:** o `prisma generate` precisa do engine do Prisma para a sua plataforma; sem rede ele não consegue baixá-lo. O `EPERM` acontece quando um servidor do projeto está rodando e trava o arquivo do engine.
+
+**Solução:** pare qualquer `npm run dev` ou `npm start` (Ctrl+C), confira a conexão (ou o proxy em `HTTPS_PROXY`) e rode de novo:
+```bash
+npx prisma generate
+```
+
+### Node abaixo da versão 24
+
+**Sintoma:** `npm warn EBADENGINE Unsupported engine` no `npm ci`, ou erros ao rodar os scripts.
+
+**Causa:** o projeto exige Node 24 (`"engines": {"node": ">=24"}`) e só é testado nessa versão.
+
+**Solução:** instale o Node 24 (https://nodejs.org ou `nvm install 24` e `nvm use 24`), confira com `node -v`, apague a pasta `node_modules` e rode `npm ci` de novo.
 
 ### Porta em uso
 
@@ -331,6 +567,59 @@ npx prisma migrate deploy
 
 **Solução:** troque `PORT` no `.env` (ex.: `PORT=3001`) ou encerre o outro processo.
 
+### npm não roda no PowerShell
+
+**Sintoma:** `npm.ps1 não pode ser carregado porque a execução de scripts foi desabilitada neste sistema`.
+
+**Causa:** a política de execução do PowerShell bloqueia scripts.
+
+**Solução:** use `npm.cmd` no lugar de `npm` (ex.: `npm.cmd ci`), ou libere scripts para o seu usuário: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+### curl não funciona no PowerShell
+
+**Sintoma:** erro de parâmetro ao usar `curl -X POST ...`.
+
+**Causa:** no Windows PowerShell, `curl` é outro comando (`Invoke-WebRequest`).
+
+**Solução:** use `curl.exe`, como nos exemplos. Envie o corpo de `POST`/`PATCH` como arquivo (`--data-binary "@exemplos/arquivo.json"`): passado com `-d '{...}'` direto no PowerShell, o JSON perde as aspas internas e o servidor responde `Body is not valid JSON`.
+
+### curl.exe não encontrado (Linux)
+
+**Sintoma:** `curl.exe: command not found`.
+
+**Causa:** no Linux o programa se chama `curl`.
+
+**Solução:** troque `curl.exe` por `curl`, ou rode `alias curl.exe=curl` no terminal (vale até fechar o terminal).
+
+### Erro 400 "Body is not valid JSON" ou "Request body size did not match Content-Length"
+
+**Causa:** o JSON foi digitado na linha de comando e chegou alterado (aspas removidas pelo PowerShell, acentos recodificados pelo Git Bash) ou foi salvo com codificação diferente de UTF-8.
+
+**Solução:** envie um arquivo salvo em UTF-8 com `--data-binary "@caminho/arquivo.json"`, como os de `exemplos/`.
+
+### psql não é reconhecido (Windows)
+
+**Sintoma:** `psql : O termo 'psql' não é reconhecido...` ou `'createdb' não é reconhecido como um comando interno`.
+
+**Causa:** o instalador do PostgreSQL no Windows não coloca a pasta `bin` no `PATH`.
+
+**Solução:** use o caminho completo (troque `18` pela sua versão) ou adicione a pasta ao `PATH`:
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" --version
+& "C:\Program Files\PostgreSQL\18\bin\createdb.exe" -U postgres cinebridge_recomendacao
+```
+
+### Peer authentication failed (Ubuntu)
+
+**Sintoma:** `Peer authentication failed for user "postgres"`.
+
+**Causa:** no Ubuntu, o usuário `postgres` do banco só aceita login local pelo usuário `postgres` do sistema, e vem sem senha.
+
+**Solução:** defina uma senha para ele e use-a na `DATABASE_URL`:
+```bash
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'escolha-uma-senha';"
+```
+
 ### Testes estourando o tempo
 
 **Sintoma:** `Exceeded timeout of 5000 ms for a test`.
@@ -339,7 +628,7 @@ npx prisma migrate deploy
 
 **Solução:**
 ```bash
-npm run test -- --testTimeout=30000
+npm test -- --testTimeout=30000
 ```
 
 ### Erros de tipo depois de mudar o schema.prisma
@@ -348,65 +637,13 @@ npm run test -- --testTimeout=30000
 
 **Causa:** o cliente do Prisma não foi gerado de novo.
 
-**Solução:**
-```bash
-npx prisma generate
-```
-
-### EPERM ao gerar o Prisma no Windows
-
-**Sintoma:** `EPERM: operation not permitted, rename '...query_engine-windows.dll.node...'`.
-
-**Causa:** o `npm run dev` está rodando e bloqueia o arquivo.
-
-**Solução:** pare o servidor (Ctrl+C) e rode `npx prisma generate` de novo.
-
-### curl não funciona no PowerShell
-
-**Sintoma:** erro de parâmetro ao usar `curl -X POST ...`.
-
-**Causa:** no Windows PowerShell, `curl` é outro comando (`Invoke-WebRequest`).
-
-**Solução:** use `curl.exe` ou `Invoke-RestMethod http://localhost:3000/health`. Para `POST`/`PATCH` com corpo JSON, não passe o JSON com `-d '...'` no PowerShell (ele remove as aspas internas e o servidor responde `Body is not valid JSON`); use um arquivo, como no item seguinte.
-
-### Erro 400 "Request body size did not match Content-Length" ou "Body is not valid JSON"
-
-**Causa:** no Windows, o JSON passado direto na linha de comando (`-d '{...}'`) chega alterado: o PowerShell remove as aspas internas, e o Git Bash muda a codificação de letras acentuadas (`São Paulo`, `Órbita`).
-
-**Solução:** salve o corpo num arquivo `projeto.json` em UTF-8 e envie com `--data-binary`:
-```powershell
-curl.exe -X POST http://localhost:3000/projetos/recomendar -H "content-type: application/json" --data-binary "@projeto.json"
-```
-
-### psql ou createdb não é reconhecido (Windows)
-
-**Sintoma:** `psql : O termo 'psql' não é reconhecido...` ou `'createdb' não é reconhecido como um comando interno`.
-
-**Causa:** o instalador do PostgreSQL no Windows não coloca a pasta `bin` no `PATH`.
-
-**Solução:** use o caminho completo (troque `18` pela sua versão) ou adicione a pasta ao `PATH` nas variáveis de ambiente do Windows:
-```powershell
-& "C:\Program Files\PostgreSQL\18\bin\psql.exe" --version
-& "C:\Program Files\PostgreSQL\18\bin\createdb.exe" -U postgres cinebridge_recomendacao
-```
-
-### Peer authentication failed (Ubuntu)
-
-**Sintoma:** `createdb: error: ... Peer authentication failed for user "postgres"`.
-
-**Causa:** no Ubuntu, o usuário `postgres` do banco só aceita login local pelo usuário `postgres` do sistema, e vem sem senha.
-
-**Solução:** crie o banco como esse usuário e defina a senha usada na `DATABASE_URL`:
-```bash
-sudo -u postgres createdb cinebridge_recomendacao
-sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
-```
+**Solução:** `npx prisma generate`.
 
 ### Profissionais recém-cadastrados ou apagados não aparecem
 
-**Causa:** o cadastro fica em memória e é recarregado a cada `CATALOGO_TTL_MS/2`.
+**Causa:** o cadastro fica em memória e é recarregado a cada metade do `CATALOGO_TTL_MS`.
 
-**Solução:** espere alguns segundos ou reinicie o `npm run dev` depois de rodar o `db:seed`.
+**Solução:** espere alguns segundos ou reinicie o servidor depois de rodar o `db:seed`.
 
 ### Equipe vem vazia ou incompleta
 
@@ -414,10 +651,14 @@ sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
 
 **Causa:** não há profissionais cadastrados para o papel, disponíveis até a `dataEntrega` e dentro do orçamento.
 
-**Solução:** rode `npm run db:seed`, use uma `dataEntrega` mais próxima ou aumente o `orcamentoTotal`.
+**Solução:** rode `npm run db:seed`, depois `node exemplos/atualizar-datas.js`, ou use uma `dataEntrega` mais próxima ou um `orcamentoTotal` maior.
 
 ### Erro 422 "A data de entrega do projeto já passou"
 
-**Causa:** a `dataEntrega` enviada é anterior a hoje.
+**Causa:** a `dataEntrega` enviada é hoje ou anterior a hoje.
 
-**Solução:** envie uma data futura.
+**Solução:** envie uma data futura; para os arquivos de `exemplos/`, rode `node exemplos/atualizar-datas.js`.
+
+## Documentação técnica
+
+A análise crítica da ATVI, a descrição dos padrões, o diagrama de classes e as decisões de projeto estão em [docs/ATVII.md](docs/ATVII.md).

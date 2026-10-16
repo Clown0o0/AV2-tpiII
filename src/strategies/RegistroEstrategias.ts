@@ -3,18 +3,17 @@ import type { TipoEstrategia } from '../domain/entities/Projeto';
 import { CossenoStrategy } from './CossenoStrategy';
 import { FiltragemColaborativaStrategy } from './FiltragemColaborativaStrategy';
 import { OrcamentoReduzidoStrategy } from './OrcamentoReduzidoStrategy';
-import type { RecomendacaoStrategy } from './RecomendacaoStrategy';
+import type { CatalogoEstrategias, RecomendacaoStrategy } from './RecomendacaoStrategy';
 
-// Acha a estratégia pelo nome escolhido pelo produtor (na criação, no PATCH ou na substituição).
-export class EstrategiaRegistry {
+export class RegistroEstrategias implements CatalogoEstrategias {
   private readonly estrategias = new Map<TipoEstrategia, RecomendacaoStrategy>();
 
   constructor(estrategias: readonly RecomendacaoStrategy[] = []) {
     for (const estrategia of estrategias) this.registrar(estrategia);
   }
 
-  static padrao(): EstrategiaRegistry {
-    return new EstrategiaRegistry([
+  static padrao(): RegistroEstrategias {
+    return new RegistroEstrategias([
       new CossenoStrategy(),
       new FiltragemColaborativaStrategy(),
       new OrcamentoReduzidoStrategy(),
@@ -29,5 +28,9 @@ export class EstrategiaRegistry {
     const estrategia = this.estrategias.get(tipo);
     if (!estrategia) throw new ErroValidacao(`Estratégia de recomendação não suportada: ${tipo}`);
     return estrategia;
+  }
+
+  tipos(): TipoEstrategia[] {
+    return [...this.estrategias.keys()];
   }
 }

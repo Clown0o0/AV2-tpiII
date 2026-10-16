@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { Convite } from '../../../src/domain/entities/Convite';
 import { MembroRecomendado, Recomendacao } from '../../../src/domain/entities/Recomendacao';
 import { PrismaProfissionalRepository } from '../../../src/repositories/PrismaProfissionalRepository';
+import { RegistroFabricas } from '../../../src/factories/RegistroFabricas';
 import { PrismaProjetoRepository } from '../../../src/repositories/PrismaProjetoRepository';
 import { criarProjeto, DATA_ENTREGA, DATA_REFERENCIA } from '../../support/fixtures';
 
@@ -80,7 +81,7 @@ describe('PrismaProfissionalRepository', () => {
 describe('PrismaProjetoRepository', () => {
   it('salva o projeto com seus papéis numa transação e o reconstrói', async () => {
     const { mock, prisma } = prismaFalso();
-    const repo = new PrismaProjetoRepository(prisma);
+    const repo = new PrismaProjetoRepository(prisma, RegistroFabricas.padrao());
     const projeto = criarProjeto({
       papeis: [
         { papel: 'DIRETOR', peso: 2, competenciasDesejadas: { direcao: 1 } },
@@ -116,7 +117,7 @@ describe('PrismaProjetoRepository', () => {
 
   it('salva e reconstrói a recomendação com seus membros', async () => {
     const { mock, prisma } = prismaFalso();
-    const repo = new PrismaProjetoRepository(prisma);
+    const repo = new PrismaProjetoRepository(prisma, RegistroFabricas.padrao());
     const recomendacao = new Recomendacao({
       projetoId: 'proj',
       estrategia: 'COSSENO',
@@ -155,9 +156,22 @@ describe('PrismaProjetoRepository', () => {
     expect(await repo.buscarRecomendacaoVigente('x')).toBeNull();
   });
 
+  it('id fora do formato UUID devolve null sem consultar o banco (o Postgres rejeitaria a consulta)', async () => {
+    const { mock, prisma } = prismaFalso();
+    const repo = new PrismaProjetoRepository(prisma, RegistroFabricas.padrao());
+    for (const id of ['abc', '123', '%20', "'; drop table x;--", 'ZZZZZZZZ-0000-4000-8000-000000000000']) {
+      expect(await repo.buscarPorId(id)).toBeNull();
+      expect(await repo.buscarRecomendacao(id)).toBeNull();
+      expect(await repo.buscarConvite(id)).toBeNull();
+    }
+    expect(mock.projeto.findUnique).not.toHaveBeenCalled();
+    expect(mock.recomendacao.findUnique).not.toHaveBeenCalled();
+    expect(mock.convite.findUnique).not.toHaveBeenCalled();
+  });
+
   it('salva, busca e lista convites', async () => {
     const { mock, prisma } = prismaFalso();
-    const repo = new PrismaProjetoRepository(prisma);
+    const repo = new PrismaProjetoRepository(prisma, RegistroFabricas.padrao());
     const convite = new Convite({ recomendacaoId: 'r', projetoId: 'proj', profissionalId: 'p1', papel: 'EDITOR' });
     await repo.salvarConvite(convite);
     const registro = mock.convite.upsert.mock.calls[0][0].create;

@@ -12,9 +12,9 @@ export type StatusRecomendacao = (typeof STATUS_RECOMENDACAO)[number];
 const STATUS_INATIVOS: ReadonlySet<StatusMembro> = new Set<StatusMembro>(['REJEITADO', 'RECUSADO', 'SUBSTITUIDO']);
 
 export interface Alternativa {
-  profissionalId: string;
-  score: number;
-  custo: number;
+  readonly profissionalId: string;
+  readonly score: number;
+  readonly custo: number;
 }
 
 export interface DadosMembro {
@@ -28,7 +28,21 @@ export interface DadosMembro {
   alternativas?: Alternativa[];
 }
 
-export class MembroRecomendado implements Elemento {
+// O que quem está fora da Recomendacao enxerga de um membro: só leitura, sem transicionar().
+export interface MembroRecomendadoLeitura {
+  readonly id: string;
+  readonly papel: PapelTecnico;
+  readonly profissionalId: string;
+  readonly score: number;
+  readonly custo: number;
+  readonly rodada: number;
+  readonly alternativas: readonly Alternativa[];
+  readonly status: StatusMembro;
+  readonly ativo: boolean;
+}
+
+// Construído pelo domínio e pela orquestração; o status só muda pelos métodos da Recomendacao.
+export class MembroRecomendado implements Elemento, MembroRecomendadoLeitura {
   readonly id: string;
   readonly papel: PapelTecnico;
   readonly profissionalId: string;
@@ -123,16 +137,16 @@ export class Recomendacao implements Elemento {
   get finalizadaEm(): Date | null {
     return this._finalizadaEm;
   }
-  get membros(): readonly MembroRecomendado[] {
-    return this._membros;
+  get membros(): readonly MembroRecomendadoLeitura[] {
+    return [...this._membros];
   }
 
-  membrosAtivos(): MembroRecomendado[] {
+  membrosAtivos(): MembroRecomendadoLeitura[] {
     return this._membros.filter((m) => m.ativo);
   }
 
-  membroAtivo(papel: PapelTecnico): MembroRecomendado | undefined {
-    return this._membros.find((m) => m.papel === papel && m.ativo);
+  membroAtivo(papel: PapelTecnico): MembroRecomendadoLeitura | undefined {
+    return this.membroAtivoParaAlterar(papel);
   }
 
   custoTotal(): number {
@@ -163,15 +177,15 @@ export class Recomendacao implements Elemento {
     this._avisos = [...avisos];
   }
 
-  convidar(papel: PapelTecnico): MembroRecomendado {
+  convidar(papel: PapelTecnico): MembroRecomendadoLeitura {
     return this.transicionar(papel, ['SUGERIDO'], 'CONVIDADO');
   }
 
-  rejeitar(papel: PapelTecnico): MembroRecomendado {
+  rejeitar(papel: PapelTecnico): MembroRecomendadoLeitura {
     return this.transicionar(papel, ['SUGERIDO', 'CONVIDADO'], 'REJEITADO');
   }
 
-  substituir(papel: PapelTecnico): MembroRecomendado | undefined {
+  substituir(papel: PapelTecnico): MembroRecomendadoLeitura | undefined {
     if (!this.membroAtivo(papel)) {
       this.garantirEmAndamento();
       return undefined;
@@ -179,11 +193,11 @@ export class Recomendacao implements Elemento {
     return this.transicionar(papel, ['SUGERIDO', 'CONVIDADO', 'CONFIRMADO'], 'SUBSTITUIDO');
   }
 
-  confirmar(papel: PapelTecnico): MembroRecomendado {
+  confirmar(papel: PapelTecnico): MembroRecomendadoLeitura {
     return this.transicionar(papel, ['CONVIDADO'], 'CONFIRMADO');
   }
 
-  recusar(papel: PapelTecnico): MembroRecomendado {
+  recusar(papel: PapelTecnico): MembroRecomendadoLeitura {
     return this.transicionar(papel, ['CONVIDADO'], 'RECUSADO');
   }
 
@@ -205,15 +219,19 @@ export class Recomendacao implements Elemento {
 
   aceitar(visitante: Visitante): void {
     visitante.visitarRecomendacao(this);
-    for (const membro of this.membrosAtivos()) membro.aceitar(visitante);
+    for (const membro of this._membros) if (membro.ativo) membro.aceitar(visitante);
   }
 
-  private transicionar(papel: PapelTecnico, de: readonly StatusMembro[], para: StatusMembro): MembroRecomendado {
+  private transicionar(papel: PapelTecnico, de: readonly StatusMembro[], para: StatusMembro): MembroRecomendadoLeitura {
     this.garantirEmAndamento();
-    const membro = this.membroAtivo(papel);
+    const membro = this.membroAtivoParaAlterar(papel);
     if (!membro) throw new ErroValidacao(`Não há membro ativo para o papel ${papel}`);
     membro.transicionar(de, para);
     return membro;
+  }
+
+  private membroAtivoParaAlterar(papel: PapelTecnico): MembroRecomendado | undefined {
+    return this._membros.find((m) => m.papel === papel && m.ativo);
   }
 
   private garantirEmAndamento(): void {

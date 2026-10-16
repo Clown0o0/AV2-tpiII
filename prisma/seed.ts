@@ -9,6 +9,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient, type PapelTecnico } from '@prisma/client';
+import { LeitorDeAmbiente, lerOuEncerrar, type Ambiente } from '../src/composicao/configuracao';
 import { PAPEIS_TECNICOS, PERFIL_PADRAO_POR_PAPEL } from '../src/domain/entities/Projeto';
 
 try {
@@ -17,14 +18,22 @@ try {
   // variáveis já definidas no ambiente
 }
 
+const TOTAL = lerOuEncerrar(() => lerTotalDeProfissionais(process.env));
 const prisma = new PrismaClient();
-const TOTAL = Number(process.env.SEED_PROFISSIONAIS ?? 300);
 const LOTE = 1000;
 const CIDADES = ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Recife', 'Porto Alegre', 'Salvador', 'Curitiba'];
 const NOMES = ['Ana', 'Bruno', 'Carla', 'Diego', 'Elisa', 'Felipe', 'Gabriela', 'Heitor', 'Isabela', 'João', 'Larissa', 'Marcos'];
 const SOBRENOMES = ['Silva', 'Souza', 'Oliveira', 'Santos', 'Lima', 'Costa', 'Pereira', 'Almeida', 'Ribeiro', 'Carvalho'];
 const PRODUTORES = Array.from({ length: 25 }, (_, i) => `produtor-${i + 1}`);
 const EXTRAS = ['lideranca', 'pesquisa', 'narrativa', 'animacao_3d', 'trilha', 'color_grading'];
+
+function lerTotalDeProfissionais(ambiente: Ambiente): number {
+  const leitor = new LeitorDeAmbiente(ambiente);
+  leitor.urlDoBanco('DATABASE_URL');
+  const total = leitor.inteiro('SEED_PROFISSIONAIS', 300, 0, 1_000_000);
+  leitor.confirmar();
+  return total;
+}
 
 // PRNG determinístico (mulberry32) para que o seed seja reproduzível.
 let estado = 42;

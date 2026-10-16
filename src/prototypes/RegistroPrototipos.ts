@@ -13,75 +13,23 @@ const BASE_MODELO: Omit<DadosProjeto, 'genero' | 'duracaoEstimadaMin' | 'tipoCap
   localizacao: 'A definir',
 };
 
+export interface CatalogoPrototipos {
+  criarAPartirDe(chave: string, ajustes?: AjustesProjeto): Projeto;
+  chaves(): string[];
+}
+
 // Prototype: guarda um projeto-modelo por chave e cria novos projetos clonando o modelo
 // e aplicando os ajustes (que passam pela validação do construtor).
-export class RegistroPrototipos {
+export class RegistroPrototipos implements CatalogoPrototipos {
   private readonly prototipos = new Map<string, Projeto>();
 
   // Um projeto-modelo inicial por tipo.
   static padrao(): RegistroPrototipos {
     const registro = new RegistroPrototipos();
-    registro.registrar(
-      'ficcao',
-      new Projeto({
-        ...BASE_MODELO,
-        genero: 'Drama',
-        duracaoEstimadaMin: 100,
-        tipoCaptacao: 'FICCAO',
-        papeis: [
-          { papel: 'DIRETOR', peso: 3 },
-          { papel: 'ROTEIRISTA', peso: 2 },
-          { papel: 'DIRETOR_FOTOGRAFIA', peso: 2 },
-          { papel: 'EDITOR', peso: 1 },
-        ],
-      }),
-    );
-    registro.registrar(
-      'documentario',
-      new ProjetoDocumentario({
-        ...BASE_MODELO,
-        genero: 'Documentário',
-        duracaoEstimadaMin: 80,
-        tipoCaptacao: 'DOCUMENTARIO',
-        estrategia: 'ORCAMENTO_REDUZIDO',
-        papeis: [
-          { papel: 'DIRETOR', peso: 3 },
-          { papel: 'ROTEIRISTA', peso: 2 },
-          { papel: 'EDITOR', peso: 2 },
-        ],
-      }),
-    );
-    registro.registrar(
-      'animacao',
-      new ProjetoAnimacao({
-        ...BASE_MODELO,
-        genero: 'Animação',
-        duracaoEstimadaMin: 85,
-        tipoCaptacao: 'ANIMACAO',
-        detalhes: { tecnica: '3D', softwares: ['Blender'], quadrosPorSegundo: 24 },
-        papeis: [
-          { papel: 'DIRETOR', peso: 3 },
-          { papel: 'EFEITOS_VISUAIS', peso: 3 },
-          { papel: 'SONOPLASTA', peso: 1 },
-        ],
-      }),
-    );
-    registro.registrar(
-      'publicitario',
-      new ProjetoPublicitario({
-        ...BASE_MODELO,
-        genero: 'Publicidade',
-        duracaoEstimadaMin: 1,
-        tipoCaptacao: 'PUBLICITARIO',
-        // 60 s: a duração estimada é em minutos inteiros (1 min), e o validador do tipo exige estimada <= máxima.
-        detalhes: { canais: ['TV', 'redes sociais'], duracaoMaxSegundos: 60 },
-        papeis: [
-          { papel: 'DIRETOR', peso: 2 },
-          { papel: 'DIRETOR_FOTOGRAFIA', peso: 3 },
-          { papel: 'EDITOR', peso: 2 },
-        ],
-      }),
-    );
+    registro.registrar('ficcao', modeloFiccao());
+    registro.registrar('documentario', modeloDocumentario());
+    registro.registrar('animacao', modeloAnimacao());
+    registro.registrar('publicitario', modeloPublicitario());
     return registro;
   }
 
@@ -99,4 +47,65 @@ export class RegistroPrototipos {
   chaves(): string[] {
     return [...this.prototipos.keys()];
   }
+}
+
+function modeloFiccao(): Projeto {
+  return new Projeto({
+    ...BASE_MODELO,
+    genero: 'Drama',
+    duracaoEstimadaMin: 100,
+    tipoCaptacao: 'FICCAO',
+    papeis: [
+      { papel: 'DIRETOR', peso: 3 },
+      { papel: 'ROTEIRISTA', peso: 2 },
+      { papel: 'DIRETOR_FOTOGRAFIA', peso: 2 },
+      { papel: 'EDITOR', peso: 1 },
+    ],
+  });
+}
+
+function modeloDocumentario(): ProjetoDocumentario {
+  return new ProjetoDocumentario({
+    ...BASE_MODELO,
+    genero: 'Documentário',
+    duracaoEstimadaMin: 80,
+    tipoCaptacao: 'DOCUMENTARIO',
+    estrategia: 'ORCAMENTO_REDUZIDO',
+    papeis: [
+      { papel: 'DIRETOR', peso: 3 },
+      { papel: 'ROTEIRISTA', peso: 2 },
+      { papel: 'EDITOR', peso: 2 },
+    ],
+  });
+}
+
+function modeloAnimacao(): ProjetoAnimacao {
+  return new ProjetoAnimacao({
+    ...BASE_MODELO,
+    genero: 'Animação',
+    duracaoEstimadaMin: 85,
+    tipoCaptacao: 'ANIMACAO',
+    detalhes: { tecnica: '3D', softwares: ['Blender'], quadrosPorSegundo: 24 },
+    papeis: [
+      { papel: 'DIRETOR', peso: 3 },
+      { papel: 'EFEITOS_VISUAIS', peso: 3 },
+      { papel: 'SONOPLASTA', peso: 1 },
+    ],
+  });
+}
+
+// 60 s: a duração estimada é em minutos inteiros (1 min) e o validador do tipo exige estimada <= máxima.
+function modeloPublicitario(): ProjetoPublicitario {
+  return new ProjetoPublicitario({
+    ...BASE_MODELO,
+    genero: 'Publicidade',
+    duracaoEstimadaMin: 1,
+    tipoCaptacao: 'PUBLICITARIO',
+    detalhes: { canais: ['TV', 'redes sociais'], duracaoMaxSegundos: 60 },
+    papeis: [
+      { papel: 'DIRETOR', peso: 2 },
+      { papel: 'DIRETOR_FOTOGRAFIA', peso: 3 },
+      { papel: 'EDITOR', peso: 2 },
+    ],
+  });
 }

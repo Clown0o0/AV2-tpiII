@@ -1,4 +1,6 @@
+import { obterOuCalcular } from '../compartilhado/memoizacao';
 import { Avaliacao } from '../domain/entities/Avaliacao';
+import { similaridadeCosseno } from '../domain/entities/Competencia';
 import type { Profissional } from '../domain/entities/Profissional';
 import {
   arredondar,
@@ -8,11 +10,11 @@ import {
   type RecomendacaoStrategy,
 } from './RecomendacaoStrategy';
 
-// Parâmetros da filtragem colaborativa.
 export const PESO_PRIOR_BAYESIANO = 2; // quantas "notas virtuais" com a média geral cada profissional recebe
-export const NOTA_NEUTRA = 3; // meio da escala 1..5
+export const NOTA_NEUTRA = 3;
 
-type NotasPorProdutor = Map<string, Map<string, number>>; // produtor -> (profissional -> nota média)
+type NotasDoProdutorPorProfissional = Map<string, number>;
+type NotasPorProdutor = Map<string, NotasDoProdutorPorProfissional>;
 
 // Estima a nota que o produtor do projeto daria a cada candidato, com base nas notas de
 // produtores de gosto parecido. Sem vizinhos, cai numa média suavizada do próprio candidato.
@@ -22,87 +24,107 @@ export class FiltragemColaborativaStrategy implements RecomendacaoStrategy {
 
   recomendar(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[] {
     const resumo = resumoDoUniverso(contexto.universo);
-    const { notas, mediaGeral } = resumo;
     const produtor = contexto.projeto.produtorId;
-    const minhasNotas = notas.get(produtor);
-    const vizinhos = vizinhosDoProdutor(resumo, produtor);
-
-    const ranking = candidatos.map((profissional) => {
-      let somaPonderada = 0;
-      let somaPesos = 0;
-      for (const [notasDoVizinho, s] of vizinhos) {
-        const nota = notasDoVizinho.get(profissional.id);
-        if (nota === undefined) continue;
-        somaPonderada += s * nota;
-        somaPesos += s;
-      }
-
-      const previsao =
-        minhasNotas?.get(profissional.id) ??
-        (somaPesos > 0 ? somaPonderada / somaPesos : mediaBayesiana(profissional, mediaGeral));
-
-      return {
-        profissional,
-        score: arredondar(previsao / Avaliacao.NOTA_MAXIMA),
-        detalhes: { notaPrevista: arredondar(previsao), pesoVizinhos: arredondar(somaPesos) },
-      };
-    });
-    return ordenarRanking(ranking);
+    const minhasNotas = resumo.notas.get(produtor);
+    const somasDosVizinhos = somasDosVizinhosDoProdutor(resumo, produtor);
+    return ordenarRanking(candidatos.map((profissional) => pontuar(profissional, minhasNotas, somasDosVizinhos, resumo.mediaGeral)));
   }
+}
+
+function pontuar(
+  profissional: Profissional,
+  minhasNotas: NotasDoProdutorPorProfissional | undefined,
+  somasDosVizinhos: SomasDosVizinhos,
+  mediaGeral: number,
+): CandidatoPontuado {
+  const { media: mediaDosVizinhos, pesoTotal } = mediaPonderadaDosVizinhos(somasDosVizinhos.get(profissional.id));
+  const previsao = minhasNotas?.get(profissional.id) ?? mediaDosVizinhos ?? mediaBayesiana(profissional, mediaGeral);
+  return {
+    profissional,
+    score: arredondar(previsao / Avaliacao.NOTA_MAXIMA),
+    detalhes: { notaPrevista: arredondar(previsao), pesoVizinhos: arredondar(pesoTotal) },
+  };
+}
+
+function mediaPonderadaDosVizinhos(soma: SomaPonderada | undefined): { media: number | undefined; pesoTotal: number } {
+  const pesoTotal = soma?.pesoTotal ?? 0;
+  return { media: soma && pesoTotal > 0 ? soma.somaPonderada / pesoTotal : undefined, pesoTotal };
 }
 
 type Vizinho = [notasDoVizinho: Map<string, number>, similaridade: number];
 
+interface SomaPonderada {
+  somaPonderada: number;
+  pesoTotal: number;
+}
+
+// Por profissional: soma das notas dos vizinhos que o avaliaram, ponderadas pela similaridade.
+type SomasDosVizinhos = Map<string, SomaPonderada>;
+
 interface ResumoUniverso {
   notas: NotasPorProdutor;
   mediaGeral: number;
-  vizinhos: Map<string, Vizinho[]>;
+  somasPorProdutor: Map<string, SomasDosVizinhos>;
 }
 
-// Em uma rodada, todos os papéis recebem o mesmo array `universo`; o resumo é calculado uma vez por array.
-const RESUMOS = new WeakMap<readonly Profissional[], ResumoUniverso>();
+// Cache por array: numa rodada todos os papéis recebem o mesmo `universo`.
+const CACHE_RESUMOS_POR_UNIVERSO = new WeakMap<readonly Profissional[], ResumoUniverso>();
 
 function resumoDoUniverso(universo: readonly Profissional[]): ResumoUniverso {
-  let resumo = RESUMOS.get(universo);
-  if (!resumo) {
-    resumo = { notas: agruparNotas(universo), mediaGeral: calcularMediaGeral(universo), vizinhos: new Map() };
-    RESUMOS.set(universo, resumo);
-  }
-  return resumo;
+  return obterOuCalcular(CACHE_RESUMOS_POR_UNIVERSO, universo, () => ({
+    notas: agruparNotas(universo),
+    mediaGeral: calcularMediaGeral(universo),
+    somasPorProdutor: new Map(),
+  }));
 }
 
-function vizinhosDoProdutor(resumo: ResumoUniverso, produtor: string): Vizinho[] {
-  let vizinhos = resumo.vizinhos.get(produtor);
-  if (!vizinhos) {
-    vizinhos = [];
-    const minhasNotas = resumo.notas.get(produtor);
-    for (const [outro, notasDoOutro] of resumo.notas) {
-      if (outro === produtor) continue;
-      const s = similaridade(minhasNotas, notasDoOutro);
-      if (s > 0) vizinhos.push([notasDoOutro, s]);
+function somasDosVizinhosDoProdutor(resumo: ResumoUniverso, produtor: string): SomasDosVizinhos {
+  return obterOuCalcular(resumo.somasPorProdutor, produtor, () => somarNotasDosVizinhos(calcularVizinhos(resumo.notas, produtor)));
+}
+
+// Calculado uma vez por produtor em vez de percorrer os vizinhos para cada candidato. Os vizinhos
+// são somados na mesma ordem, então o resultado é idêntico ao da soma feita candidato a candidato.
+function somarNotasDosVizinhos(vizinhos: readonly Vizinho[]): SomasDosVizinhos {
+  const somas: SomasDosVizinhos = new Map();
+  for (const [notasDoVizinho, similaridade] of vizinhos) {
+    for (const [profissionalId, nota] of notasDoVizinho) {
+      const soma = somas.get(profissionalId);
+      if (soma) {
+        soma.somaPonderada += similaridade * nota;
+        soma.pesoTotal += similaridade;
+      } else {
+        somas.set(profissionalId, { somaPonderada: similaridade * nota, pesoTotal: similaridade });
+      }
     }
-    resumo.vizinhos.set(produtor, vizinhos);
+  }
+  return somas;
+}
+
+function calcularVizinhos(notas: NotasPorProdutor, produtor: string): Vizinho[] {
+  const minhasNotas = notas.get(produtor);
+  const vizinhos: Vizinho[] = [];
+  for (const [outro, notasDoOutro] of notas) {
+    if (outro === produtor) continue;
+    const s = similaridadeEntreProdutores(minhasNotas, notasDoOutro);
+    if (s > 0) vizinhos.push([notasDoOutro, s]);
   }
   return vizinhos;
 }
 
-// Média das notas que cada produtor deu a um profissional; não muda, então é calculada uma vez por profissional.
-const MEDIAS_POR_PROFISSIONAL = new WeakMap<Profissional, Array<[autorId: string, media: number]>>();
+// Cache porque as avaliações de um profissional não mudam depois de carregadas.
+const CACHE_MEDIAS_POR_PROFISSIONAL = new WeakMap<Profissional, Array<[autorId: string, media: number]>>();
 
 function mediasPorAutor(profissional: Profissional): Array<[string, number]> {
-  let medias = MEDIAS_POR_PROFISSIONAL.get(profissional);
-  if (!medias) {
-    const acumulado = new Map<string, { soma: number; quantidade: number }>();
-    for (const { autorId, nota } of profissional.avaliacoes) {
-      const atual = acumulado.get(autorId) ?? { soma: 0, quantidade: 0 };
-      atual.soma += nota;
-      atual.quantidade += 1;
-      acumulado.set(autorId, atual);
-    }
-    medias = [...acumulado].map(([autor, { soma, quantidade }]) => [autor, soma / quantidade]);
-    MEDIAS_POR_PROFISSIONAL.set(profissional, medias);
+  return obterOuCalcular(CACHE_MEDIAS_POR_PROFISSIONAL, profissional, () => calcularMediasPorAutor(profissional));
+}
+
+function calcularMediasPorAutor(profissional: Profissional): Array<[string, number]> {
+  const acumulado = new Map<string, { soma: number; quantidade: number }>();
+  for (const { autorId, nota } of profissional.avaliacoes) {
+    const atual = acumulado.get(autorId) ?? { soma: 0, quantidade: 0 };
+    acumulado.set(autorId, { soma: atual.soma + nota, quantidade: atual.quantidade + 1 });
   }
-  return medias;
+  return [...acumulado].map(([autor, { soma, quantidade }]) => [autor, soma / quantidade]);
 }
 
 function agruparNotas(profissionais: readonly Profissional[]): NotasPorProdutor {
@@ -132,24 +154,27 @@ function calcularMediaGeral(profissionais: readonly Profissional[]): number {
   return quantidade === 0 ? NOTA_NEUTRA : soma / quantidade;
 }
 
-// Cosseno entre dois produtores, só sobre quem os dois avaliaram. As notas são centralizadas
-// no meio da escala, assim gostos opostos dão similaridade negativa.
-function similaridade(a: Map<string, number> | undefined, b: Map<string, number>): number {
+// Notas centralizadas no meio da escala para que gostos opostos deem similaridade negativa;
+// só entram os profissionais avaliados pelos dois produtores.
+function similaridadeEntreProdutores(a: NotasDoProdutorPorProfissional | undefined, b: NotasDoProdutorPorProfissional): number {
   if (!a) return 0;
-  let produto = 0;
-  let normaA = 0;
-  let normaB = 0;
-  for (const [id, notaA] of a) {
-    const notaB = b.get(id);
+  const [centralizadasA, centralizadasB] = notasCentralizadasEmComum(a, b);
+  return similaridadeCosseno(centralizadasA, centralizadasB);
+}
+
+function notasCentralizadasEmComum(
+  a: NotasDoProdutorPorProfissional,
+  b: NotasDoProdutorPorProfissional,
+): [Record<string, number>, Record<string, number>] {
+  const centralizadasA: Record<string, number> = {};
+  const centralizadasB: Record<string, number> = {};
+  for (const [profissionalId, notaA] of a) {
+    const notaB = b.get(profissionalId);
     if (notaB === undefined) continue;
-    const x = notaA - NOTA_NEUTRA;
-    const y = notaB - NOTA_NEUTRA;
-    produto += x * y;
-    normaA += x * x;
-    normaB += y * y;
+    centralizadasA[profissionalId] = notaA - NOTA_NEUTRA;
+    centralizadasB[profissionalId] = notaB - NOTA_NEUTRA;
   }
-  if (normaA === 0 || normaB === 0) return 0;
-  return produto / Math.sqrt(normaA * normaB);
+  return [centralizadasA, centralizadasB];
 }
 
 function mediaBayesiana(profissional: Profissional, mediaGeral: number): number {

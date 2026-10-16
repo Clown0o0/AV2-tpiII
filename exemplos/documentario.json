@@ -1,0 +1,18 @@
+{
+  "titulo": "Memórias do Corporativo",
+  "produtorId": "produtor-1",
+  "produtorEmail": "produtora@exemplo.dev",
+  "genero": "Drama",
+  "duracaoEstimadaMin": 88,
+  "orcamentoTotal": 60000,
+  "dataEntrega": "2026-12-14",
+  "tipoCaptacao": "DOCUMENTARIO",
+  "localizacao": "São Paulo",
+  "estrategia": "ORCAMENTO_REDUZIDO",
+  "detalhes": { "tema": "trabalho e memória", "entrevistados": ["Ana Lima", "João Souza"] },
+  "papeis": [
+    { "papel": "DIRETOR", "peso": 3 },
+    { "papel": "ROTEIRISTA", "peso": 2 },
+    { "papel": "SONOPLASTA", "peso": 1 }
+  ]
+}

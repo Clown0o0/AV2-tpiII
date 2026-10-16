@@ -22,16 +22,21 @@ export class PrismaProfissionalRepository implements ProfissionalRepository {
     const profissionais: Profissional[] = [];
     let cursor: string | undefined;
     for (;;) {
-      const pagina = await this.prisma.profissional.findMany({
-        take: TAMANHO_PAGINA,
-        orderBy: { id: 'asc' },
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        include: INCLUDE_PROFISSIONAL,
-      });
+      const pagina = await this.lerPagina(cursor);
       for (const registro of pagina) profissionais.push(paraDominio(registro));
-      if (pagina.length < TAMANHO_PAGINA) return profissionais;
-      cursor = pagina[pagina.length - 1]!.id;
+      const ultimo = pagina.at(-1);
+      if (pagina.length < TAMANHO_PAGINA || !ultimo) return profissionais;
+      cursor = ultimo.id;
     }
+  }
+
+  private lerPagina(depoisDoId: string | undefined): Promise<ProfissionalPersistido[]> {
+    return this.prisma.profissional.findMany({
+      take: TAMANHO_PAGINA,
+      orderBy: { id: 'asc' },
+      ...(depoisDoId ? { cursor: { id: depoisDoId }, skip: 1 } : {}),
+      include: INCLUDE_PROFISSIONAL,
+    });
   }
 
   async buscarPorIds(ids: readonly string[]): Promise<Profissional[]> {
@@ -56,17 +61,6 @@ export function paraDominio(registro: ProfissionalPersistido): Profissional {
     historicoProjetos: registro.historicoProjetos,
     disponibilidade: registro.disponibilidades.map((d) => ({ inicio: d.inicio, fim: d.fim })),
     competencias: registro.competencias.map((c) => new Competencia(c.nome, c.nivel)),
-    avaliacoes: registro.avaliacoes.map(
-      (a) =>
-        new Avaliacao({
-          id: a.id,
-          profissionalId: a.profissionalId,
-          autorId: a.autorId,
-          projetoId: a.projetoId,
-          nota: a.nota,
-          comentario: a.comentario,
-          criadaEm: a.criadaEm,
-        }),
-    ),
+    avaliacoes: registro.avaliacoes.map((avaliacao) => new Avaliacao(avaliacao)),
   });
 }

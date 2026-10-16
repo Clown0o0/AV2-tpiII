@@ -1,3 +1,4 @@
+import { obterOuCalcular } from '../../compartilhado/memoizacao';
 import { ErroValidacao } from '../errors';
 
 // Vetor esparso de competências técnicas: nome da competência -> nível (0..1).
@@ -31,28 +32,18 @@ export class Competencia {
   }
 }
 
-// A norma ao quadrado de cada vetor é calculada uma vez (os vetores não mudam depois de criados).
-const NORMAS = new WeakMap<object, number>();
+// Cache porque os vetores são imutáveis e a mesma norma é pedida para cada candidato.
+const CACHE_NORMAS = new WeakMap<object, number>();
 
 function normaAoQuadrado(vetor: VetorCompetencias): number {
-  let norma = NORMAS.get(vetor);
-  if (norma === undefined) {
-    norma = 0;
-    for (const nome in vetor) norma += vetor[nome]! * vetor[nome]!;
-    NORMAS.set(vetor, norma);
-  }
-  return norma;
+  return obterOuCalcular(CACHE_NORMAS, vetor, () => Object.values(vetor).reduce((soma, nivel) => soma + nivel * nivel, 0));
 }
 
-// Similaridade de cosseno entre dois vetores esparsos (0 quando algum vetor é nulo).
 export function similaridadeCosseno(a: VetorCompetencias, b: VetorCompetencias): number {
   const normaA = normaAoQuadrado(a);
   const normaB = normaAoQuadrado(b);
   if (normaA === 0 || normaB === 0) return 0;
   let produto = 0;
-  for (const nome in a) {
-    const outro = b[nome];
-    if (outro !== undefined) produto += a[nome]! * outro;
-  }
+  for (const [nome, nivel] of Object.entries(a)) produto += nivel * (b[nome] ?? 0);
   return produto / (Math.sqrt(normaA) * Math.sqrt(normaB));
 }

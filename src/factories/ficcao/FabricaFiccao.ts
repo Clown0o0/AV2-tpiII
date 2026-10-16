@@ -2,11 +2,16 @@ import { Projeto, type DadosProjeto } from '../../domain/entities/Projeto';
 import type { RecomendacaoStrategy } from '../../strategies/RecomendacaoStrategy';
 import { ValidacaoConsistenciaVisitor } from '../../visitors/ValidacaoConsistenciaVisitor';
 import { FabricaProjetoBase } from '../FabricaProjeto';
+import { RelatorioVisitor } from '../../visitors/RelatorioVisitor';
 import { NotificadorFiccao } from './NotificadorFiccao';
 
 // Ficção usa o comportamento padrão: Projeto base, validação padrão e a estratégia escolhida sem ajuste.
 export class FabricaFiccao extends FabricaProjetoBase {
   readonly tipo = 'FICCAO' as const;
+
+  comEstrategia(base: RecomendacaoStrategy): FabricaFiccao {
+    return new FabricaFiccao(this.opcoesComEstrategia(base));
+  }
 
   criarProjeto(dados: DadosProjeto): Projeto {
     return new Projeto({ ...dados, tipoCaptacao: this.tipo });
@@ -22,5 +27,9 @@ export class FabricaFiccao extends FabricaProjetoBase {
 
   criarNotificador(): NotificadorFiccao {
     return new NotificadorFiccao();
+  }
+
+  criarRelatorio(): RelatorioVisitor {
+    return new RelatorioVisitor();
   }
 }
