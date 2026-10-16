@@ -1,7 +1,14 @@
 import type { PapelTecnico, Projeto, TipoCaptacao } from '../../domain/entities/Projeto';
-import { EVENTOS, type EventoBase, type EventoRecomendacao, type NomeEvento } from '../EventTypes';
+import {
+  EVENTOS,
+  type EquipeFinalizada,
+  type EventoRecomendacao,
+  type MembroRejeitado,
+  type NomeEvento,
+  type RecomendacaoGerada,
+} from '../EventTypes';
 import type { Observador } from '../RecomendacaoEventEmitter';
-import type { LoggerEstruturado } from './AuditoriaObserver';
+import type { LoggerEstruturado } from './AuditoriaObservador';
 
 export interface NotificacaoTipo {
   tipoCaptacao: TipoCaptacao;
@@ -28,25 +35,28 @@ export abstract class NotificadorPorTipo implements Observador {
   }
 
   atualizar(evento: EventoRecomendacao): void {
-    if (!this.doTipo(evento.payload)) return;
+    if (!this.doTipo(evento)) return;
     switch (evento.nome) {
-      case EVENTOS.RECOMENDACAO_GERADA: {
-        const { projeto } = evento.payload;
-        this.notificar(EVENTOS.RECOMENDACAO_GERADA, projeto.id, projeto.produtorId, this.textoRecomendacao(projeto));
-        return;
-      }
-      case EVENTOS.MEMBRO_REJEITADO: {
-        const { projetoId, ator, papel } = evento.payload;
-        this.notificar(EVENTOS.MEMBRO_REJEITADO, projetoId, ator.id, this.textoPapelEmAberto(papel));
-        return;
-      }
-      case EVENTOS.EQUIPE_FINALIZADA: {
-        const { projeto, recomendacao } = evento.payload;
-        for (const membro of recomendacao.membrosAtivos()) {
-          this.notificar(EVENTOS.EQUIPE_FINALIZADA, projeto.id, membro.profissionalId, this.textoEquipeFinalizada(projeto));
-        }
-        return;
-      }
+      case EVENTOS.RECOMENDACAO_GERADA:
+        return this.avisarRecomendacao(evento.payload);
+      case EVENTOS.MEMBRO_REJEITADO:
+        return this.avisarPapelEmAberto(evento.payload);
+      case EVENTOS.EQUIPE_FINALIZADA:
+        return this.avisarEquipeFinalizada(evento.payload);
+    }
+  }
+
+  private avisarRecomendacao({ projeto }: RecomendacaoGerada): void {
+    this.notificar(EVENTOS.RECOMENDACAO_GERADA, projeto.id, projeto.produtorId, this.textoRecomendacao(projeto));
+  }
+
+  private avisarPapelEmAberto({ projetoId, ator, papel }: MembroRejeitado): void {
+    this.notificar(EVENTOS.MEMBRO_REJEITADO, projetoId, ator.id, this.textoPapelEmAberto(papel));
+  }
+
+  private avisarEquipeFinalizada({ projeto, recomendacao }: EquipeFinalizada): void {
+    for (const membro of recomendacao.membrosAtivos()) {
+      this.notificar(EVENTOS.EQUIPE_FINALIZADA, projeto.id, membro.profissionalId, this.textoEquipeFinalizada(projeto));
     }
   }
 
@@ -54,8 +64,8 @@ export abstract class NotificadorPorTipo implements Observador {
   protected abstract textoPapelEmAberto(papel: PapelTecnico): string;
   protected abstract textoEquipeFinalizada(projeto: Projeto): string;
 
-  private doTipo(payload: EventoBase): boolean {
-    const tipo = payload.tipoCaptacao ?? (payload as Partial<{ projeto: Projeto }>).projeto?.tipoCaptacao;
+  private doTipo({ payload }: EventoRecomendacao): boolean {
+    const tipo = payload.tipoCaptacao ?? ('projeto' in payload ? payload.projeto.tipoCaptacao : undefined);
     return tipo === this.tipoCaptacao;
   }
 

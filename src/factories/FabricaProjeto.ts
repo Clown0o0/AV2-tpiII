@@ -1,13 +1,13 @@
 import type { DadosProjeto, Projeto, TipoCaptacao } from '../domain/entities/Projeto';
 import type { Observador } from '../events/RecomendacaoEventEmitter';
-import type { LoggerEstruturado } from '../events/observers/AuditoriaObserver';
-import { CossenoStrategy } from '../strategies/CossenoStrategy';
+import type { LoggerEstruturado } from '../events/observadores/AuditoriaObservador';
 import type { RecomendacaoStrategy } from '../strategies/RecomendacaoStrategy';
 import type { ProjetoVisitor } from '../visitors/ProjetoVisitor';
+import type { Relatorio } from '../visitors/RelatorioVisitor';
 import type { ResultadoValidacao } from '../visitors/ValidacaoConsistenciaVisitor';
 
 // Abstract Factory: cada tipo de projeto tem uma fábrica que cria a família inteira (projeto,
-// validador, recomendador e notificador) do mesmo tipo. Cada criarX() é um Factory Method.
+// validador, recomendador, notificador e relatório) do mesmo tipo. Cada criarX() é um Factory Method.
 export interface FabricaProjeto {
   readonly tipo: TipoCaptacao;
   // A mesma fábrica, usando `base` (a estratégia escolhida pelo produtor) no recomendador.
@@ -16,31 +16,34 @@ export interface FabricaProjeto {
   criarValidador(dataReferencia?: Date): ProjetoVisitor<ResultadoValidacao>;
   criarRecomendador(): RecomendacaoStrategy;
   criarNotificador(): Observador;
+  criarRelatorio(): ProjetoVisitor<Relatorio>;
+}
+
+export interface CatalogoFabricas {
+  obter(tipo: TipoCaptacao): FabricaProjeto;
+  tipos(): TipoCaptacao[];
 }
 
 export interface OpcoesFabrica {
-  // Estratégia que o recomendador do tipo decora (padrão: cosseno, a mesma do Projeto).
+  // Estratégia que o recomendador do tipo decora.
   estrategiaBase: RecomendacaoStrategy;
   logger?: LoggerEstruturado;
 }
 
-// O que é comum às fábricas concretas: opções e a troca da estratégia base.
+// O que é comum às fábricas concretas: as opções (estratégia base e logger).
 export abstract class FabricaProjetoBase implements FabricaProjeto {
   abstract readonly tipo: TipoCaptacao;
-  protected readonly opcoes: OpcoesFabrica;
+  constructor(protected readonly opcoes: OpcoesFabrica) {}
 
-  constructor(opcoes: Partial<OpcoesFabrica> = {}) {
-    this.opcoes = { estrategiaBase: new CossenoStrategy(), ...opcoes };
-  }
+  abstract comEstrategia(base: RecomendacaoStrategy): FabricaProjeto;
 
-  // As fábricas concretas mantêm o construtor (opcoes) desta base, então a cópia é da mesma classe.
-  comEstrategia(base: RecomendacaoStrategy): FabricaProjeto {
-    const Fabrica = this.constructor as new (opcoes: Partial<OpcoesFabrica>) => FabricaProjeto;
-    return new Fabrica({ ...this.opcoes, estrategiaBase: base });
+  protected opcoesComEstrategia(base: RecomendacaoStrategy): OpcoesFabrica {
+    return { ...this.opcoes, estrategiaBase: base };
   }
 
   abstract criarProjeto(dados: DadosProjeto): Projeto;
   abstract criarValidador(dataReferencia?: Date): ProjetoVisitor<ResultadoValidacao>;
   abstract criarRecomendador(): RecomendacaoStrategy;
   abstract criarNotificador(): Observador;
+  abstract criarRelatorio(): ProjetoVisitor<Relatorio>;
 }

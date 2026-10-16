@@ -1,0 +1,10 @@
+{
+  "modelo": "publicitario",
+  "titulo": "Verão Aurora",
+  "produtorId": "produtor-3",
+  "orcamentoTotal": 60000,
+  "dataEntrega": "2026-12-14",
+  "localizacao": "Rio de Janeiro",
+  "estrategia": "ORCAMENTO_REDUZIDO",
+  "detalhes": { "marca": "Café Aurora" }
+}

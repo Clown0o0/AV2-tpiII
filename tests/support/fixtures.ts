@@ -2,10 +2,20 @@ import { Avaliacao } from '../../src/domain/entities/Avaliacao';
 import { Competencia } from '../../src/domain/entities/Competencia';
 import { Profissional, type DadosProfissional } from '../../src/domain/entities/Profissional';
 import { PAPEIS_TECNICOS, PERFIL_PADRAO_POR_PAPEL, Projeto, type DadosProjeto, type PapelTecnico } from '../../src/domain/entities/Projeto';
+import type { OpcoesFabrica } from '../../src/factories/FabricaProjeto';
+import { CossenoStrategy } from '../../src/strategies/CossenoStrategy';
 
 export const DATA_REFERENCIA = new Date('2026-01-10T00:00:00.000Z');
 export const DATA_ENTREGA = new Date('2026-12-15T00:00:00.000Z');
+// Mesma estratégia base que o RegistroFabricas.padrao() usa.
+export const OPCOES_FABRICA: OpcoesFabrica = { estrategiaBase: new CossenoStrategy() };
 export const JANELA_TOTAL = { inicio: new Date('2025-12-01T00:00:00.000Z'), fim: new Date('2027-06-30T00:00:00.000Z') };
+export const DIA_MS = 86_400_000;
+
+// Para testes que usam o relógio real (Date.now()): a agenda acompanha a data em que o teste roda.
+export function agendaAPartirDeHoje(dias = 365): Array<{ inicio: Date; fim: Date }> {
+  return [{ inicio: new Date(Date.now() - DIA_MS), fim: new Date(Date.now() + dias * DIA_MS) }];
+}
 
 export function competencias(vetor: Record<string, number>): Competencia[] {
   return Object.entries(vetor).map(([nome, nivel]) => new Competencia(nome, nivel));

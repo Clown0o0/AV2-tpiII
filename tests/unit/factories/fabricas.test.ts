@@ -7,7 +7,7 @@ import { ProjetoPublicitario } from '../../../src/domain/entities/ProjetoPublici
 import { MembroRecomendado, Recomendacao } from '../../../src/domain/entities/Recomendacao';
 import { EVENTOS, type MembroRejeitado, type RecomendacaoGerada } from '../../../src/events/EventTypes';
 import { RecomendacaoEventEmitter } from '../../../src/events/RecomendacaoEventEmitter';
-import { NotificadorPorTipo } from '../../../src/events/observers/NotificadorPorTipo';
+import { NotificadorPorTipo } from '../../../src/events/observadores/NotificadorPorTipo';
 import { FabricaAnimacao } from '../../../src/factories/animacao/FabricaAnimacao';
 import { NotificadorAnimacao } from '../../../src/factories/animacao/NotificadorAnimacao';
 import { RecomendadorAnimacao } from '../../../src/factories/animacao/RecomendadorAnimacao';
@@ -17,7 +17,7 @@ import { NotificadorDocumentario } from '../../../src/factories/documentario/Not
 import { RecomendadorDocumentario } from '../../../src/factories/documentario/RecomendadorDocumentario';
 import { ValidadorDocumentario } from '../../../src/factories/documentario/ValidadorDocumentario';
 import type { FabricaProjeto } from '../../../src/factories/FabricaProjeto';
-import { FabricaProjetoRegistry } from '../../../src/factories/FabricaProjetoRegistry';
+import { RegistroFabricas } from '../../../src/factories/RegistroFabricas';
 import { FabricaFiccao } from '../../../src/factories/ficcao/FabricaFiccao';
 import { NotificadorFiccao } from '../../../src/factories/ficcao/NotificadorFiccao';
 import { FabricaPublicitario } from '../../../src/factories/publicitario/FabricaPublicitario';
@@ -29,7 +29,7 @@ import { OrcamentoReduzidoStrategy } from '../../../src/strategies/OrcamentoRedu
 import type { ContextoEstrategia, RecomendacaoStrategy } from '../../../src/strategies/RecomendacaoStrategy';
 import { EstruturaEquipe, type ProjetoVisitor } from '../../../src/visitors/ProjetoVisitor';
 import { ValidacaoConsistenciaVisitor, type ResultadoValidacao } from '../../../src/visitors/ValidacaoConsistenciaVisitor';
-import { criarProfissional, dadosProjeto, DATA_REFERENCIA } from '../../support/fixtures';
+import { criarProfissional, dadosProjeto, DATA_REFERENCIA, OPCOES_FABRICA } from '../../support/fixtures';
 import { LoggerMemoria } from '../../support/InMemoryRepositories';
 
 const FAMILIAS = [
@@ -59,7 +59,7 @@ function contexto(universo: Profissional[]): ContextoEstrategia {
 
 describe('Abstract Factory — cada fábrica cria só a família do próprio tipo', () => {
   it.each(FAMILIAS)('%s', (tipo, Fabrica, ClasseProjeto, ClasseValidador, ClasseRecomendador, ClasseNotificador) => {
-    const fabrica = new Fabrica();
+    const fabrica = new Fabrica(OPCOES_FABRICA);
     const familia = [
       fabrica.criarProjeto(dadosProjeto({ tipoCaptacao: 'FICCAO' })),
       fabrica.criarValidador(),
@@ -82,14 +82,14 @@ describe('Abstract Factory — cada fábrica cria só a família do próprio tip
   it('comEstrategia devolve fábrica da mesma classe, com a estratégia escolhida como base', () => {
     const reduzido = new OrcamentoReduzidoStrategy();
     for (const [, Fabrica] of FAMILIAS) {
-      const original = new Fabrica();
+      const original = new Fabrica(OPCOES_FABRICA);
       const configurada = original.comEstrategia(reduzido);
       expect(configurada).toBeInstanceOf(Fabrica);
       expect(configurada).not.toBe(original);
       expect(configurada.criarRecomendador().tipo).toBe('ORCAMENTO_REDUZIDO');
       expect(original.criarRecomendador().tipo).toBe('COSSENO');
     }
-    expect(new FabricaFiccao().comEstrategia(reduzido).criarRecomendador()).toBe(reduzido);
+    expect(new FabricaFiccao(OPCOES_FABRICA).comEstrategia(reduzido).criarRecomendador()).toBe(reduzido);
   });
 });
 
@@ -105,7 +105,7 @@ describe('Recomendadores por tipo (decoram a estratégia escolhida)', () => {
     [FabricaDocumentario, 'documentarista'],
     [FabricaPublicitario, 'publicitario'],
   ] as const)('%p põe no topo quem tem as competências do tipo', (Fabrica, esperado) => {
-    const recomendador = new Fabrica().comEstrategia(baseFixa).criarRecomendador();
+    const recomendador = new Fabrica(OPCOES_FABRICA).comEstrategia(baseFixa).criarRecomendador();
     const ranking = recomendador.recomendar(todos, contexto(todos));
     expect(ranking[0]?.profissional.id).toBe(esperado);
     // só o especialista do tipo ganha afinidade; o generalista fica com 80% do score base
@@ -120,14 +120,14 @@ describe('Recomendadores por tipo (decoram a estratégia escolhida)', () => {
 
   it('o score fica em [0,1] e a ordenação é determinística mesmo com base no máximo', () => {
     const maximo: RecomendacaoStrategy = { ...baseFixa, recomendar: (c) => c.map((profissional) => ({ profissional, score: 1, detalhes: {} })) };
-    const ranking = new FabricaAnimacao().comEstrategia(maximo).criarRecomendador().recomendar(todos, contexto(todos));
+    const ranking = new FabricaAnimacao(OPCOES_FABRICA).comEstrategia(maximo).criarRecomendador().recomendar(todos, contexto(todos));
     expect(ranking.map((c) => c.score)).toEqual([1, 0.8, 0.8, 0.8]);
     expect(ranking.map((c) => c.profissional.id)).toEqual(['animador', 'documentarista', 'generalista', 'publicitario']);
   });
 
   it('respeita os descartes da estratégia base', () => {
     const caro = criarProfissional({ id: 'caro', precoMin: 999999, competencias: { vfx: 1 } });
-    const recomendador = new FabricaAnimacao().comEstrategia(new OrcamentoReduzidoStrategy()).criarRecomendador();
+    const recomendador = new FabricaAnimacao(OPCOES_FABRICA).comEstrategia(new OrcamentoReduzidoStrategy()).criarRecomendador();
     expect(recomendador.recomendar([caro], { ...contexto([caro]), orcamentoPapel: 1000 })).toEqual([]);
   });
 });
@@ -149,8 +149,8 @@ describe('Validadores por tipo', () => {
     dadosProjeto({ tipoCaptacao: tipo, papeis: [{ papel: 'DIRETOR', peso: 1 }], ...extra });
 
   it('documentário exige ROTEIRISTA; animação exige EFEITOS_VISUAIS', () => {
-    const doc = new FabricaDocumentario();
-    const anim = new FabricaAnimacao();
+    const doc = new FabricaDocumentario(OPCOES_FABRICA);
+    const anim = new FabricaAnimacao(OPCOES_FABRICA);
     const semRoteirista = validar(doc, doc.criarProjeto(soDiretor('DOCUMENTARIO')));
     expect(semRoteirista.valida).toBe(false);
     expect(semRoteirista.erros).toEqual(['Documentário exige o papel ROTEIRISTA']);
@@ -161,22 +161,25 @@ describe('Validadores por tipo', () => {
   });
 
   it('publicitário confere a duração estimada com a duração máxima da peça', () => {
-    const pub = new FabricaPublicitario();
+    const pub = new FabricaPublicitario(OPCOES_FABRICA);
     expect(validar(pub, pub.criarProjeto(soDiretor('PUBLICITARIO', { duracaoEstimadaMin: 1 }))).valida).toBe(true);
     const longa = validar(pub, pub.criarProjeto(soDiretor('PUBLICITARIO', { duracaoEstimadaMin: 2, detalhes: { duracaoMaxSegundos: 30 } })));
     expect(longa.valida).toBe(false);
     expect(longa.erros).toEqual(['Duração estimada (120 s) excede a duração máxima da peça (30 s)']);
   });
 
-  it('validador de um tipo recusa projeto de outro tipo', () => {
+  it('validador de um tipo aceita projeto de outro tipo sem acrescentar erros (substituível pela base)', () => {
     const ficcao = new Projeto(soDiretor('FICCAO'));
-    expect(validar(new FabricaDocumentario(), ficcao).erros).toEqual([`Projeto ${ficcao.id} não é um documentário`]);
-    expect(validar(new FabricaAnimacao(), ficcao).erros).toEqual([`Projeto ${ficcao.id} não é uma animação`]);
-    expect(validar(new FabricaPublicitario(), ficcao).erros).toEqual([`Projeto ${ficcao.id} não é uma peça publicitária`]);
+    const resultadoDaBase = validarCom(new ValidacaoConsistenciaVisitor(DATA_REFERENCIA), ficcao);
+    for (const fabrica of [new FabricaDocumentario(OPCOES_FABRICA), new FabricaAnimacao(OPCOES_FABRICA), new FabricaPublicitario(OPCOES_FABRICA)]) {
+      expect(validar(fabrica, ficcao)).toEqual(resultadoDaBase);
+    }
+    const animacaoSemRoteirista = new FabricaAnimacao(OPCOES_FABRICA).criarProjeto(soDiretor('ANIMACAO', { papeis: [{ papel: 'DIRETOR', peso: 1 }, { papel: 'EFEITOS_VISUAIS', peso: 1 }] }));
+    expect(validar(new FabricaDocumentario(OPCOES_FABRICA), animacaoSemRoteirista).erros).toEqual(['Papel obrigatório EFEITOS_VISUAIS não preenchido']);
   });
 
-  it('FabricaFiccao dá exatamente o resultado do ValidacaoConsistenciaVisitor da ATVI', () => {
-    const fabrica = new FabricaFiccao();
+  it('FabricaFiccao dá exatamente o resultado do ValidacaoConsistenciaVisitor padrão', () => {
+    const fabrica = new FabricaFiccao(OPCOES_FABRICA);
     for (const projeto of [new Projeto(dadosProjeto()), new Projeto(soDiretor('FICCAO'))]) {
       const resultado = validar(fabrica, projeto);
       expect(resultado).toEqual(validarCom(new ValidacaoConsistenciaVisitor(DATA_REFERENCIA), projeto));
@@ -211,8 +214,8 @@ describe('Notificadores por tipo', () => {
   function montar() {
     const emitter = new RecomendacaoEventEmitter();
     const logger = new LoggerMemoria();
-    const registry = FabricaProjetoRegistry.padrao({ logger });
-    const notificadores = Object.fromEntries(registry.todas().map((f) => [f.tipo, f.criarNotificador()]));
+    const registro = RegistroFabricas.padrao({ logger });
+    const notificadores = Object.fromEntries(registro.todas().map((f) => [f.tipo, f.criarNotificador()]));
     emitter.registrar(...Object.values(notificadores));
     const enviadas = (tipo: TipoCaptacao) => (notificadores[tipo] as NotificadorPorTipo).enviadas;
     return { emitter, enviadas, logger, notificadores };
@@ -220,9 +223,9 @@ describe('Notificadores por tipo', () => {
 
   it('cada notificador reage só a eventos de projetos do próprio tipo (inclusive eventos sem projeto)', async () => {
     const { emitter, enviadas, logger } = montar();
-    const doc = new FabricaDocumentario().criarProjeto(dadosProjeto({ tipoCaptacao: 'DOCUMENTARIO', detalhes: { entrevistados: ['A', 'B'] } }));
-    const anim = new FabricaAnimacao().criarProjeto(dadosProjeto({ tipoCaptacao: 'ANIMACAO', detalhes: { tecnica: '3D', softwares: ['Blender'] } }));
-    const pub = new FabricaPublicitario().criarProjeto(dadosProjeto({ tipoCaptacao: 'PUBLICITARIO', detalhes: { marca: 'Aurora', canais: ['TV'] } }));
+    const doc = new FabricaDocumentario(OPCOES_FABRICA).criarProjeto(dadosProjeto({ tipoCaptacao: 'DOCUMENTARIO', detalhes: { entrevistados: ['A', 'B'] } }));
+    const anim = new FabricaAnimacao(OPCOES_FABRICA).criarProjeto(dadosProjeto({ tipoCaptacao: 'ANIMACAO', detalhes: { tecnica: '3D', softwares: ['Blender'] } }));
+    const pub = new FabricaPublicitario(OPCOES_FABRICA).criarProjeto(dadosProjeto({ tipoCaptacao: 'PUBLICITARIO', detalhes: { marca: 'Aurora', canais: ['TV'] } }));
     const ficcao = new Projeto(dadosProjeto());
 
     for (const projeto of [doc, anim, pub, ficcao]) {
@@ -268,6 +271,37 @@ describe('Notificadores por tipo', () => {
     expect(enviadas('PUBLICITARIO')[2]?.texto).toMatch(/^Publicidade: o papel EDITOR/);
   });
 
+  it('lê os dados do aviso pela subclasse do tipo e ignora projetos de outro tipo', async () => {
+    const tipos = ['DOCUMENTARIO', 'ANIMACAO', 'PUBLICITARIO'] as const;
+    const projetos = [
+      new ProjetoDocumentario(dadosProjeto({ detalhes: { tema: 'Rios urbanos', entrevistados: ['A', 'B', 'C'] } })),
+      new ProjetoAnimacao(dadosProjeto({ detalhes: { tecnica: 'STOP_MOTION', quadrosPorSegundo: 12, softwares: ['Dragonframe', 'Blender'] } })),
+      new ProjetoPublicitario(dadosProjeto({ detalhes: { marca: 'Café Aurora', canais: ['TV', 'Web'] } })),
+    ];
+    const textos = new Map<TipoCaptacao, string[]>();
+    for (const tipo of tipos) {
+      const notificador = { DOCUMENTARIO: NotificadorDocumentario, ANIMACAO: NotificadorAnimacao, PUBLICITARIO: NotificadorPublicitario }[tipo];
+      const instancia = new notificador(tipo);
+      for (const projeto of projetos) {
+        instancia.atualizar({ nome: EVENTOS.RECOMENDACAO_GERADA, payload: eventoGerado(projeto) });
+        instancia.atualizar({ nome: EVENTOS.EQUIPE_FINALIZADA, payload: eventoGerado(projeto) });
+      }
+      textos.set(tipo, instancia.enviadas.map((n) => n.texto));
+    }
+    expect(textos.get('DOCUMENTARIO')).toEqual([
+      'Documentário "Filme Teste": equipe sugerida. Providencie as autorizações de uso de imagem dos 3 entrevistado(s).',
+      'Equipe do documentário "Filme Teste" fechada: confira o cronograma de entrevistas sobre "Rios urbanos".',
+    ]);
+    expect(textos.get('ANIMACAO')).toEqual([
+      'Animação "Filme Teste" (STOP_MOTION, 12 qps): equipe sugerida. Reserve as estações de render para os efeitos visuais.',
+      'Equipe da animação "Filme Teste" completa: acesso ao pipeline liberado (softwares: Dragonframe, Blender).',
+    ]);
+    expect(textos.get('PUBLICITARIO')).toEqual([
+      'Peça publicitária de Café Aurora: equipe sugerida. Envie a proposta para aprovação da agência.',
+      'Equipe da campanha "Filme Teste" confirmada (canais: TV, Web).',
+    ]);
+  });
+
   it('registro único: cada notificador é adicionado uma vez, e um aviso por evento publicado', async () => {
     const { emitter, enviadas, notificadores } = montar();
     // 4 notificadores, um por fábrica (o de ficção não reage a nada); adicionar de novo não duplica
@@ -300,18 +334,18 @@ describe('Notificadores por tipo', () => {
   });
 });
 
-describe('FabricaProjetoRegistry', () => {
+describe('RegistroFabricas', () => {
   it('mapeia cada tipo para a sua fábrica', () => {
-    const registry = FabricaProjetoRegistry.padrao();
-    expect(registry.tipos()).toEqual(['DOCUMENTARIO', 'FICCAO', 'ANIMACAO', 'PUBLICITARIO']);
-    for (const [tipo, Fabrica] of FAMILIAS) expect(registry.obter(tipo)).toBeInstanceOf(Fabrica);
+    const registro = RegistroFabricas.padrao();
+    expect(registro.tipos()).toEqual(['DOCUMENTARIO', 'FICCAO', 'ANIMACAO', 'PUBLICITARIO']);
+    for (const [tipo, Fabrica] of FAMILIAS) expect(registro.obter(tipo)).toBeInstanceOf(Fabrica);
   });
 
   it('tipo sem fábrica registrada lança ErroValidacao', () => {
-    const registry = new FabricaProjetoRegistry([new FabricaFiccao()]);
-    expect(() => registry.obter('ANIMACAO')).toThrow(ErroValidacao);
-    expect(() => registry.obter('ANIMACAO')).toThrow(/sem fábrica registrada: ANIMACAO/);
-    registry.registrar(new FabricaAnimacao());
-    expect(registry.obter('ANIMACAO')).toBeInstanceOf(FabricaAnimacao);
+    const registro = new RegistroFabricas([new FabricaFiccao(OPCOES_FABRICA)]);
+    expect(() => registro.obter('ANIMACAO')).toThrow(ErroValidacao);
+    expect(() => registro.obter('ANIMACAO')).toThrow(/sem fábrica registrada: ANIMACAO/);
+    registro.registrar(new FabricaAnimacao(OPCOES_FABRICA));
+    expect(registro.obter('ANIMACAO')).toBeInstanceOf(FabricaAnimacao);
   });
 });

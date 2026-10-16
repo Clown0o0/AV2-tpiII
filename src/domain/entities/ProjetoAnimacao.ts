@@ -1,5 +1,6 @@
 import { lerListaTextos, lerNumeroPositivo, lerOpcao } from './detalhesProjeto';
 import { Projeto, type AjustesProjeto, type DadosProjeto, type DetalhesProjeto } from './Projeto';
+import type { Visitante } from './Visitante';
 
 export const TECNICAS_ANIMACAO = ['2D', '3D', 'STOP_MOTION'] as const;
 export type TecnicaAnimacao = (typeof TECNICAS_ANIMACAO)[number];
@@ -40,5 +41,9 @@ export class ProjetoAnimacao extends Projeto {
 
   protected override detalhesParaClone(): DetalhesProjeto {
     return this.detalhes;
+  }
+
+  override aceitar(visitante: Visitante): void {
+    visitante.visitarProjetoAnimacao(this);
   }
 }

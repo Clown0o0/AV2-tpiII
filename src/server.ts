@@ -1,14 +1,17 @@
 import { PrismaClient } from '@prisma/client';
+import type { FastifyBaseLogger } from 'fastify';
 import { construirApp } from './app';
 import { RecomendacaoEventEmitter } from './events/RecomendacaoEventEmitter';
-import { AuditoriaObserver } from './events/observers/AuditoriaObserver';
-import { EmailObserver } from './events/observers/EmailObserver';
-import { MensagemInternaObserver } from './events/observers/MensagemInternaObserver';
-import { FabricaProjetoRegistry } from './factories/FabricaProjetoRegistry';
+import { AuditoriaObservador } from './events/observadores/AuditoriaObservador';
+import { EmailObservador } from './events/observadores/EmailObservador';
+import { MensagemInternaObservador } from './events/observadores/MensagemInternaObservador';
+import { RegistroFabricas } from './factories/RegistroFabricas';
 import { PrismaProfissionalRepository } from './repositories/PrismaProfissionalRepository';
 import { PrismaProjetoRepository } from './repositories/PrismaProjetoRepository';
-import { TIMEOUT_PADRAO_MS, TTL_CATALOGO_PADRAO_MS } from './services/FonteProfissionaisResiliente';
-import { SistemaRecomendacao } from './services/SistemaRecomendacao';
+import { criarSistemaRecomendacao } from './composicao/criarSistemaRecomendacao';
+import { lerConfiguracao, lerOuEncerrar, type Configuracao } from './composicao/configuracao';
+import type { OpcoesFonteResiliente } from './services/FonteProfissionaisResiliente';
+import type { SistemaRecomendacao } from './services/SistemaRecomendacao';
 
 try {
   process.loadEnvFile();
@@ -16,37 +19,46 @@ try {
   // Sem .env: usa apenas as variáveis de ambiente do processo.
 }
 
+const configuracao = lerOuEncerrar(() => lerConfiguracao(process.env));
 const prisma = new PrismaClient();
 let eventos: RecomendacaoEventEmitter | undefined;
 let servico: SistemaRecomendacao | undefined;
 
 const app = construirApp({
-  logger: { level: process.env.LOG_LEVEL ?? 'info' },
+  logger: { level: configuracao.nivelLog },
   montarServico: (logger) => {
-    const fabricas = FabricaProjetoRegistry.padrao({ logger });
-    // Um notificador por tipo, registrado uma única vez aqui (nunca por requisição).
-    eventos = new RecomendacaoEventEmitter((erro, evento, observador) =>
-      logger.error({ err: erro, evento, observador }, 'falha em observador'),
-    ).registrar(
-      new EmailObserver(logger),
-      new MensagemInternaObserver(logger),
-      new AuditoriaObserver(logger),
-      ...fabricas.todas().map((fabrica) => fabrica.criarNotificador()),
-    );
-    servico = new SistemaRecomendacao({
+    const fabricas = RegistroFabricas.padrao({ logger });
+    eventos = criarPublicadorDeEventos(logger, fabricas);
+    servico = criarSistemaRecomendacao({
       profissionais: new PrismaProfissionalRepository(prisma),
       projetos: new PrismaProjetoRepository(prisma, fabricas),
       eventos,
       fabricas,
-      opcoesFonte: {
-        timeoutMs: Number(process.env.PROFISSIONAIS_TIMEOUT_MS ?? TIMEOUT_PADRAO_MS),
-        ttlMs: Number(process.env.CATALOGO_TTL_MS ?? TTL_CATALOGO_PADRAO_MS),
-        aoFalhar: (erro, operacao) => logger.warn({ err: erro, operacao }, 'repositório de profissionais indisponível; usando fallback'),
-      },
+      opcoesFonte: opcoesDaFonteDeProfissionais(logger, configuracao),
     });
     return servico;
   },
 });
+
+// Um notificador por tipo, registrado uma única vez aqui (nunca por requisição).
+function criarPublicadorDeEventos(logger: FastifyBaseLogger, fabricas: RegistroFabricas): RecomendacaoEventEmitter {
+  return new RecomendacaoEventEmitter((erro, evento, observador) =>
+    logger.error({ err: erro, evento, observador }, 'falha em observador'),
+  ).registrar(
+    new EmailObservador(logger),
+    new MensagemInternaObservador(logger),
+    new AuditoriaObservador(logger),
+    ...fabricas.todas().map((fabrica) => fabrica.criarNotificador()),
+  );
+}
+
+function opcoesDaFonteDeProfissionais(logger: FastifyBaseLogger, config: Configuracao): Partial<OpcoesFonteResiliente> {
+  return {
+    timeoutMs: config.profissionaisTimeoutMs,
+    ttlMs: config.catalogoTtlMs,
+    aoFalhar: (erro, operacao) => logger.warn({ err: erro, operacao }, 'repositório de profissionais indisponível; usando fallback'),
+  };
+}
 
 async function encerrar(sinal: string): Promise<void> {
   app.log.info({ sinal }, 'encerrando');
@@ -57,13 +69,24 @@ async function encerrar(sinal: string): Promise<void> {
   process.exit(0);
 }
 
+// Falha não tratada deixa o processo em estado desconhecido: registra e encerra com código 1.
+// O temporizador garante a saída mesmo se o desligamento do Prisma travar.
+function encerrarPorFalha(erro: unknown, origem: string): void {
+  app.log.fatal({ err: erro, origem }, 'falha não tratada; encerrando');
+  setTimeout(() => process.exit(1), 3000).unref();
+  servico?.encerrarCatalogo();
+  void prisma.$disconnect().finally(() => process.exit(1));
+}
+
 process.on('SIGINT', () => void encerrar('SIGINT'));
 process.on('SIGTERM', () => void encerrar('SIGTERM'));
+process.on('unhandledRejection', (motivo) => encerrarPorFalha(motivo, 'unhandledRejection'));
+process.on('uncaughtException', (erro) => encerrarPorFalha(erro, 'uncaughtException'));
 
 async function iniciar(): Promise<void> {
   // Carrega o cadastro antes de aceitar requisições, para a primeira não esperar pelo banco.
   await servico?.iniciarCatalogo();
-  await app.listen({ port: Number(process.env.PORT ?? 3000), host: process.env.HOST ?? '0.0.0.0' });
+  await app.listen({ port: configuracao.porta, host: configuracao.host });
 }
 
 iniciar().catch(async (erro: unknown) => {

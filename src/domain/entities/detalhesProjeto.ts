@@ -20,6 +20,7 @@ export function lerNumeroPositivo(valor: unknown, campo: string): number {
 }
 
 export function lerOpcao<T extends string>(valor: unknown, opcoes: readonly T[], campo: string): T {
-  if (!opcoes.includes(valor as T)) throw new ErroValidacao(`Atributo "${campo}" deve ser um de: ${opcoes.join(', ')}`);
-  return valor as T;
+  const opcao = opcoes.find((candidata) => candidata === valor);
+  if (opcao === undefined) throw new ErroValidacao(`Atributo "${campo}" deve ser um de: ${opcoes.join(', ')}`);
+  return opcao;
 }

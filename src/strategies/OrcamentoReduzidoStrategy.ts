@@ -1,4 +1,3 @@
-import { Avaliacao } from '../domain/entities/Avaliacao';
 import type { Profissional } from '../domain/entities/Profissional';
 import {
   arredondar,
@@ -40,23 +39,29 @@ export class OrcamentoReduzidoStrategy implements RecomendacaoStrategy {
   constructor(private readonly regras: RegrasOrcamentoReduzido = REGRAS_PADRAO) {}
 
   recomendar(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[] {
-    const r = this.regras;
-    const pontuados: CandidatoPontuado[] = [];
-    for (const profissional of candidatos) {
-      if (profissional.precoMin > contexto.orcamentoPapel) continue;
-      const media = profissional.mediaAvaliacoes();
-      if (media !== null && profissional.avaliacoes.length >= r.avaliacoesParaExigirNota && media < r.notaMinima) continue;
+    const elegiveis = candidatos.filter((profissional) => this.elegivel(profissional, contexto.orcamentoPapel));
+    return ordenarRanking(elegiveis.map((profissional) => this.pontuar(profissional, contexto)));
+  }
 
-      const economia = contexto.orcamentoPapel > 0 ? 1 - profissional.precoMin / contexto.orcamentoPapel : 0;
-      const local = profissional.mesmaLocalizacao(contexto.projeto.localizacao) ? 1 : 0;
-      const reputacao = media === null ? r.reputacaoPadrao : media / Avaliacao.NOTA_MAXIMA;
-      const score = r.pesoEconomia * economia + r.pesoLocalizacao * local + r.pesoReputacao * reputacao;
-      pontuados.push({
-        profissional,
-        score: arredondar(score),
-        detalhes: { economia: arredondar(economia), local, reputacao: arredondar(reputacao) },
-      });
-    }
-    return ordenarRanking(pontuados);
+  private elegivel(profissional: Profissional, orcamentoPapel: number): boolean {
+    return profissional.precoMin <= orcamentoPapel && !this.temReputacaoRuimComprovada(profissional);
+  }
+
+  private temReputacaoRuimComprovada(profissional: Profissional): boolean {
+    const media = profissional.mediaAvaliacoes();
+    return media !== null && profissional.avaliacoes.length >= this.regras.avaliacoesParaExigirNota && media < this.regras.notaMinima;
+  }
+
+  private pontuar(profissional: Profissional, contexto: ContextoEstrategia): CandidatoPontuado {
+    const r = this.regras;
+    const economia = contexto.orcamentoPapel > 0 ? 1 - profissional.precoMin / contexto.orcamentoPapel : 0;
+    const local = profissional.proximidadeDe(contexto.projeto.localizacao);
+    const reputacao = profissional.reputacao(r.reputacaoPadrao);
+    const score = r.pesoEconomia * economia + r.pesoLocalizacao * local + r.pesoReputacao * reputacao;
+    return {
+      profissional,
+      score: arredondar(score),
+      detalhes: { economia: arredondar(economia), local, reputacao: arredondar(reputacao) },
+    };
   }
 }

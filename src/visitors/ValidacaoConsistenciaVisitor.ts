@@ -1,7 +1,7 @@
 import type { Profissional } from '../domain/entities/Profissional';
-import type { Projeto } from '../domain/entities/Projeto';
-import type { MembroRecomendado, Recomendacao } from '../domain/entities/Recomendacao';
-import type { ProjetoVisitor } from './ProjetoVisitor';
+import type { PapelTecnico, Projeto } from '../domain/entities/Projeto';
+import type { MembroRecomendadoLeitura, Recomendacao } from '../domain/entities/Recomendacao';
+import { VisitanteBase } from './VisitanteBase';
 
 export interface ResultadoValidacao {
   valida: boolean;
@@ -13,25 +13,21 @@ export interface ResultadoValidacao {
 }
 
 // Verifica papéis obrigatórios preenchidos, orçamento suficiente e coerência de cada membro.
-export class ValidacaoConsistenciaVisitor implements ProjetoVisitor<ResultadoValidacao> {
-  private projeto?: Projeto;
+export class ValidacaoConsistenciaVisitor extends VisitanteBase<ResultadoValidacao> {
   private readonly erros: string[] = [];
-  private readonly membrosPorProfissional = new Map<string, MembroRecomendado>();
+  private readonly membrosPorProfissional = new Map<string, MembroRecomendadoLeitura>();
   private readonly profissionaisVisitados = new Set<string>();
   private custoTotal = 0;
 
-  // @param dataReferencia início da janela em que os membros precisam estar disponíveis.
-  constructor(private readonly dataReferencia: Date = new Date()) {}
-
-  visitarProjeto(projeto: Projeto): void {
-    this.projeto = projeto;
+  constructor(private readonly inicioDaJanelaDeDisponibilidade: Date = new Date()) {
+    super();
   }
 
-  visitarRecomendacao(recomendacao: Recomendacao): void {
+  override visitarRecomendacao(recomendacao: Recomendacao): void {
     if (recomendacao.status === 'OBSOLETA') this.erros.push('Recomendação obsoleta (substituída por uma reavaliação)');
   }
 
-  visitarMembro(membro: MembroRecomendado): void {
+  override visitarMembro(membro: MembroRecomendadoLeitura): void {
     if (this.membrosPorProfissional.has(membro.profissionalId)) {
       this.erros.push(`Profissional ${membro.profissionalId} alocado em mais de um papel`);
     }
@@ -39,38 +35,27 @@ export class ValidacaoConsistenciaVisitor implements ProjetoVisitor<ResultadoVal
     this.custoTotal += membro.custo;
   }
 
-  visitarProfissional(profissional: Profissional): void {
+  override visitarProfissional(profissional: Profissional): void {
     this.profissionaisVisitados.add(profissional.id);
     const membro = this.membrosPorProfissional.get(profissional.id);
     if (!membro) return;
-    if (!profissional.atuaComo(membro.papel)) {
-      this.erros.push(`${profissional.nome} não possui especialidade ${membro.papel}`);
-    }
+    if (!profissional.atuaComo(membro.papel)) this.erros.push(`${profissional.nome} não possui especialidade ${membro.papel}`);
     if (membro.custo < profissional.precoMin || membro.custo > profissional.precoMax) {
       this.erros.push(`Custo de ${profissional.nome} (${membro.custo}) fora da faixa de preço`);
     }
-    const entrega = this.projeto?.dataEntrega;
-    if (entrega && entrega > this.dataReferencia && !profissional.disponivelEntre(this.dataReferencia, entrega)) {
-      this.erros.push(`${profissional.nome} não está disponível até a data de entrega`);
-    }
+    if (!this.disponivelAteAEntrega(profissional)) this.erros.push(`${profissional.nome} não está disponível até a data de entrega`);
   }
 
   resultado(): ResultadoValidacao {
-    const projeto = this.exigirProjeto();
-    const erros = [...this.erros];
+    const projeto = this.obterProjetoVisitado();
     const papeisPreenchidos = new Set([...this.membrosPorProfissional.values()].map((m) => m.papel));
-    for (const { papel } of projeto.papeis) {
-      if (!papeisPreenchidos.has(papel)) erros.push(`Papel obrigatório ${papel} não preenchido`);
-    }
-    for (const [profissionalId, membro] of this.membrosPorProfissional) {
-      if (!this.profissionaisVisitados.has(profissionalId)) {
-        erros.push(`Profissional ${profissionalId} (${membro.papel}) não encontrado`);
-      }
-    }
-    if (this.custoTotal > projeto.orcamentoTotal) {
-      erros.push(`Orçamento insuficiente: equipe custa ${this.custoTotal}, orçamento é ${projeto.orcamentoTotal}`);
-    }
-    erros.push(...this.errosDoTipo(projeto));
+    const erros = [
+      ...this.erros,
+      ...this.errosDePapeisVazios(projeto, papeisPreenchidos),
+      ...this.errosDeProfissionaisAusentes(),
+      ...this.errosDeOrcamento(projeto),
+      ...this.errosDoTipo(projeto),
+    ];
     return {
       valida: erros.length === 0,
       erros,
@@ -86,8 +71,24 @@ export class ValidacaoConsistenciaVisitor implements ProjetoVisitor<ResultadoVal
     return [];
   }
 
-  private exigirProjeto(): Projeto {
-    if (!this.projeto) throw new Error('Visitor não percorreu nenhum projeto');
-    return this.projeto;
+  private disponivelAteAEntrega(profissional: Profissional): boolean {
+    const entrega = this.projetoVisitado?.dataEntrega;
+    if (!entrega || entrega <= this.inicioDaJanelaDeDisponibilidade) return true;
+    return profissional.disponivelEntre(this.inicioDaJanelaDeDisponibilidade, entrega);
+  }
+
+  private errosDePapeisVazios(projeto: Projeto, preenchidos: ReadonlySet<PapelTecnico>): string[] {
+    return projeto.papeis.filter(({ papel }) => !preenchidos.has(papel)).map(({ papel }) => `Papel obrigatório ${papel} não preenchido`);
+  }
+
+  private errosDeProfissionaisAusentes(): string[] {
+    return [...this.membrosPorProfissional]
+      .filter(([profissionalId]) => !this.profissionaisVisitados.has(profissionalId))
+      .map(([profissionalId, membro]) => `Profissional ${profissionalId} (${membro.papel}) não encontrado`);
+  }
+
+  private errosDeOrcamento(projeto: Projeto): string[] {
+    if (this.custoTotal <= projeto.orcamentoTotal) return [];
+    return [`Orçamento insuficiente: equipe custa ${this.custoTotal}, orçamento é ${projeto.orcamentoTotal}`];
   }
 }

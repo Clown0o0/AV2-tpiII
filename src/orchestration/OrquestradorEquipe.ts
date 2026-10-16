@@ -10,7 +10,11 @@ export interface MembroFixo {
   custo: number;
 }
 
-export interface EntradaComposicao {
+export function custoDosMembrosFixos(membros: readonly MembroFixo[] = []): number {
+  return membros.reduce((soma, membro) => soma + membro.custo, 0);
+}
+
+export interface EntradaOrquestracao {
   projeto: Projeto;
   profissionais: readonly Profissional[];
   estrategia: RecomendacaoStrategy;
@@ -55,7 +59,7 @@ export interface SelecaoPapel {
   alternativas: Array<{ candidato: CandidatoPontuado; custo: number }>;
 }
 
-export interface ResultadoComposicao {
+export interface ResultadoOrquestracao {
   estrategia: TipoEstrategia;
   selecionados: SelecaoPapel[];
   papeisSemCandidato: PapelTecnico[];
@@ -65,26 +69,30 @@ export interface ResultadoComposicao {
   avisos: string[];
 }
 
-// Template Method. O fluxo é sempre validar -> normalizar -> aplicar estratégia -> pós-processar;
-// as subclasses só implementam as etapas. orquestrar() não pode ser sobrescrito (o construtor barra).
+// Template Method: o fluxo é fixo e as subclasses só implementam as etapas. TypeScript não tem
+// `final`, por isso a sobrescrita de orquestrar() é barrada em tempo de execução.
 export abstract class OrquestradorEquipe {
   protected constructor() {
-    if (this.orquestrar !== OrquestradorEquipe.prototype.orquestrar) {
-      throw new TypeError(`${new.target.name} não pode sobrescrever o fluxo orquestrar() do OrquestradorEquipe`);
-    }
+    this.impedirSobrescritaDoFluxo(new.target.name);
   }
 
-  orquestrar(entrada: EntradaComposicao): ResultadoComposicao {
+  orquestrar(entrada: EntradaOrquestracao): ResultadoOrquestracao {
     this.validarRestricoes(entrada);
     const normalizada = this.normalizarDados(entrada);
     const rankings = this.aplicarEstrategia(normalizada);
     return this.posProcessar(rankings, normalizada);
   }
 
-  protected abstract validarRestricoes(entrada: EntradaComposicao): void;
-  protected abstract normalizarDados(entrada: EntradaComposicao): EntradaNormalizada;
+  protected abstract validarRestricoes(entrada: EntradaOrquestracao): void;
+  protected abstract normalizarDados(entrada: EntradaOrquestracao): EntradaNormalizada;
   protected abstract aplicarEstrategia(entrada: EntradaNormalizada): RankingPapel[];
-  protected abstract posProcessar(rankings: RankingPapel[], entrada: EntradaNormalizada): ResultadoComposicao;
+  protected abstract posProcessar(rankings: RankingPapel[], entrada: EntradaNormalizada): ResultadoOrquestracao;
+
+  private impedirSobrescritaDoFluxo(subclasse: string): void {
+    if (this.orquestrar !== OrquestradorEquipe.prototype.orquestrar) {
+      throw new TypeError(`${subclasse} não pode sobrescrever o fluxo orquestrar() do OrquestradorEquipe`);
+    }
+  }
 }
 
 Object.defineProperty(OrquestradorEquipe.prototype, 'orquestrar', { writable: false, configurable: false });

@@ -4,7 +4,7 @@ import { ProjetoAnimacao } from '../../../src/domain/entities/ProjetoAnimacao';
 import { ProjetoDocumentario } from '../../../src/domain/entities/ProjetoDocumentario';
 import { ProjetoPublicitario } from '../../../src/domain/entities/ProjetoPublicitario';
 import { Recomendacao } from '../../../src/domain/entities/Recomendacao';
-import { FabricaProjetoRegistry } from '../../../src/factories/FabricaProjetoRegistry';
+import { RegistroFabricas } from '../../../src/factories/RegistroFabricas';
 import { RegistroPrototipos } from '../../../src/prototypes/RegistroPrototipos';
 import { EstruturaEquipe } from '../../../src/visitors/ProjetoVisitor';
 import { dadosProjeto, DATA_ENTREGA } from '../../support/fixtures';
@@ -162,7 +162,7 @@ describe('RegistroPrototipos', () => {
   // projeto criado a partir dele saía com o relatório inválido.
   it('cada modelo padrão passa no validador do próprio tipo (fora os papéis ainda sem membro)', () => {
     const registro = RegistroPrototipos.padrao();
-    const fabricas = FabricaProjetoRegistry.padrao();
+    const fabricas = RegistroFabricas.padrao();
     for (const chave of registro.chaves()) {
       const projeto = registro.criarAPartirDe(chave, { dataEntrega: DATA_ENTREGA });
       const recomendacao = new Recomendacao({ projetoId: projeto.id, estrategia: projeto.estrategia, criadaEm: new Date(0) });

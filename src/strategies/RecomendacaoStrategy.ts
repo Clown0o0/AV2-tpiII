@@ -29,6 +29,11 @@ export interface RecomendacaoStrategy {
   recomendar(candidatos: readonly Profissional[], contexto: ContextoEstrategia): CandidatoPontuado[];
 }
 
+export interface CatalogoEstrategias {
+  obter(tipo: TipoEstrategia): RecomendacaoStrategy;
+  tipos(): TipoEstrategia[];
+}
+
 // Ordenação determinística: score desc, preço mínimo asc, id asc.
 export function ordenarRanking(candidatos: CandidatoPontuado[]): CandidatoPontuado[] {
   return candidatos.sort(

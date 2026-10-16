@@ -2,13 +2,18 @@ import { ErroEstadoInvalido, ErroNaoEncontrado, ErroValidacao } from '../../../s
 import type { PapelTecnico } from '../../../src/domain/entities/Projeto';
 import { EVENTOS, type MembroSubstituido, type NomeEvento, type RecomendacaoGerada } from '../../../src/events/EventTypes';
 import { RecomendacaoEventEmitter } from '../../../src/events/RecomendacaoEventEmitter';
+import { LIMITE_VARIACAO_ORCAMENTO, LIMITE_VARIACAO_PRAZO_DIAS } from '../../../src/services/PoliticaDeReavaliacao';
 import {
-  LIMITE_VARIACAO_ORCAMENTO,
-  LIMITE_VARIACAO_PRAZO_DIAS,
-  SistemaRecomendacao,
-} from '../../../src/services/SistemaRecomendacao';
-import { criarProfissional, dadosProjeto, DATA_ENTREGA, DATA_REFERENCIA, elencoCompleto } from '../../support/fixtures';
+  agendaAPartirDeHoje,
+  criarProfissional,
+  dadosProjeto,
+  DATA_ENTREGA,
+  DATA_REFERENCIA,
+  DIA_MS,
+  elencoCompleto,
+} from '../../support/fixtures';
 import { InMemoryProfissionalRepository, InMemoryProjetoRepository } from '../../support/InMemoryRepositories';
+import { criarSistemaDeTeste } from '../../support/sistema';
 
 function montar() {
   const profissionais = new InMemoryProfissionalRepository(elencoCompleto());
@@ -21,7 +26,7 @@ function montar() {
       publicados.push({ evento: evento.nome, payload: evento.payload });
     },
   });
-  const service = new SistemaRecomendacao({
+  const service = criarSistemaDeTeste({
     profissionais,
     projetos,
     eventos,
@@ -67,7 +72,7 @@ describe('SistemaRecomendacao', () => {
 
   it('profissional removido do banco mas ainda no catálogo em memória: recarrega e recompõe sem ele', async () => {
     const profissionais = new InMemoryProfissionalRepository(elencoCompleto());
-    const service = new SistemaRecomendacao({
+    const service = criarSistemaDeTeste({
       profissionais,
       projetos: new InMemoryProjetoRepository(),
       eventos: new RecomendacaoEventEmitter(),
@@ -287,7 +292,7 @@ describe('SistemaRecomendacao', () => {
     it('os limites de "alteração significativa" são configuráveis', async () => {
       expect(LIMITE_VARIACAO_ORCAMENTO).toBe(0.1);
       expect(LIMITE_VARIACAO_PRAZO_DIAS).toBe(7);
-      const service = new SistemaRecomendacao({
+      const service = criarSistemaDeTeste({
         profissionais: new InMemoryProfissionalRepository(elencoCompleto()),
         projetos: new InMemoryProjetoRepository(),
         eventos: new RecomendacaoEventEmitter(),
@@ -320,7 +325,7 @@ describe('SistemaRecomendacao', () => {
   it('lança ErroNaoEncontrado para ids inexistentes', async () => {
     const { service } = montar();
     await expect(service.alterarProjeto('x', { forcarReavaliacao: true })).rejects.toThrow(ErroNaoEncontrado);
-    await expect(service.obterRecomendacao('x')).rejects.toThrow(ErroNaoEncontrado);
+    await expect(service.obterRecomendacaoComConvites('x')).rejects.toThrow(ErroNaoEncontrado);
     await expect(service.responderConvite('x', true)).rejects.toThrow(ErroNaoEncontrado);
   });
 
@@ -334,12 +339,12 @@ describe('SistemaRecomendacao', () => {
   });
 
   it('usa os padrões de relógio, estratégias e composição quando não injetados', async () => {
-    const service = new SistemaRecomendacao({
-      profissionais: new InMemoryProfissionalRepository([criarProfissional()]),
+    const service = criarSistemaDeTeste({
+      profissionais: new InMemoryProfissionalRepository([criarProfissional({ disponibilidade: agendaAPartirDeHoje() })]),
       projetos: new InMemoryProjetoRepository(),
       eventos: new RecomendacaoEventEmitter(),
     });
-    const entrega = new Date(Date.now() + 90 * 86400000);
+    const entrega = new Date(Date.now() + 90 * DIA_MS);
     const { recomendacao } = await service.recomendar(
       dadosProjeto({ dataEntrega: entrega, papeis: [{ papel: 'DIRETOR', peso: 1 }] }),
     );

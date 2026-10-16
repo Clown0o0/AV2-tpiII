@@ -4,11 +4,12 @@ import type { Projeto, TipoEstrategia } from '../../../src/domain/entities/Proje
 import { FabricaFiccao } from '../../../src/factories/ficcao/FabricaFiccao';
 import { OrquestradorPadrao } from '../../../src/orchestration/OrquestradorPadrao';
 import { CossenoStrategy } from '../../../src/strategies/CossenoStrategy';
-import { EstrategiaRegistry } from '../../../src/strategies/EstrategiaRegistry';
+import { RegistroEstrategias } from '../../../src/strategies/RegistroEstrategias';
 import { FiltragemColaborativaStrategy } from '../../../src/strategies/FiltragemColaborativaStrategy';
 import { OrcamentoReduzidoStrategy } from '../../../src/strategies/OrcamentoReduzidoStrategy';
-import type { ContextoEstrategia } from '../../../src/strategies/RecomendacaoStrategy';
-import { criarProfissional, criarProjeto, DATA_REFERENCIA } from '../../support/fixtures';
+import { similaridadeCosseno } from '../../../src/domain/entities/Competencia';
+import { arredondar, type ContextoEstrategia } from '../../../src/strategies/RecomendacaoStrategy';
+import { criarProfissional, criarProjeto, DATA_REFERENCIA, gerarProfissionais, OPCOES_FABRICA } from '../../support/fixtures';
 
 /**
  * Cenário em que cada estratégia tem um "vencedor" diferente para DIRETOR:
@@ -61,11 +62,11 @@ describe('Strategy — trocar a estratégia muda o resultado para o mesmo input'
     ['ORCAMENTO_REDUZIDO', 'local-barato'],
   ])('estratégia %s recomenda %s como diretor', (tipo, esperado) => {
     const { projeto, universo } = cenario();
-    const composicao = new OrquestradorPadrao(new FabricaFiccao());
-    const resultado = composicao.orquestrar({
+    const orquestrador = new OrquestradorPadrao(new FabricaFiccao(OPCOES_FABRICA));
+    const resultado = orquestrador.orquestrar({
       projeto,
       profissionais: universo,
-      estrategia: EstrategiaRegistry.padrao().obter(tipo),
+      estrategia: RegistroEstrategias.padrao().obter(tipo),
       dataReferencia: DATA_REFERENCIA,
     });
     expect(resultado.estrategia).toBe(tipo);
@@ -74,13 +75,13 @@ describe('Strategy — trocar a estratégia muda o resultado para o mesmo input'
 
   it('as três estratégias produzem três escolhas distintas', () => {
     const { projeto, universo } = cenario();
-    const composicao = new OrquestradorPadrao(new FabricaFiccao());
-    const registry = EstrategiaRegistry.padrao();
+    const orquestrador = new OrquestradorPadrao(new FabricaFiccao(OPCOES_FABRICA));
+    const registro = RegistroEstrategias.padrao();
     const escolhas = (['COSSENO', 'FILTRAGEM_COLABORATIVA', 'ORCAMENTO_REDUZIDO'] as const)
-      .map((tipo) => registry.obter(tipo))
+      .map((tipo) => registro.obter(tipo))
       .map(
         (estrategia) =>
-          composicao.orquestrar({ projeto, profissionais: universo, estrategia, dataReferencia: DATA_REFERENCIA })
+          orquestrador.orquestrar({ projeto, profissionais: universo, estrategia, dataReferencia: DATA_REFERENCIA })
             .selecionados[0]?.escolhido.profissional.id,
       );
     expect(new Set(escolhas).size).toBe(3);
@@ -158,7 +159,87 @@ describe('FiltragemColaborativaStrategy', () => {
     const segunda = estrategia.recomendar(universo.slice(0, 3), contexto(projeto, universo));
     expect(segunda).toEqual(primeira);
   });
+
+  it('pondera a nota de cada vizinho pela similaridade com o produtor', () => {
+    // produtor-2 concorda em tudo com produtor-1 (similaridade 1); produtor-3 só em parte.
+    const e1 = criarProfissional({ id: 'e1', especialidades: ['EDITOR'], notas: [['produtor-1', 5], ['produtor-2', 5], ['produtor-3', 5]] });
+    const e2 = criarProfissional({ id: 'e2', especialidades: ['EDITOR'], notas: [['produtor-1', 4], ['produtor-3', 1]] });
+    const alvo = criarProfissional({ id: 'alvo', notas: [['produtor-2', 5], ['produtor-3', 1]] });
+    const projeto = criarProjeto({ papeis: [{ papel: 'DIRETOR', peso: 1 }] });
+    const [c] = new FiltragemColaborativaStrategy().recomendar([alvo], contexto(projeto, [e1, e2, alvo]));
+    // Notas centralizadas em comum com produtor-3: (2, 1) e (2, -2).
+    const s3 = 2 / (Math.sqrt(5) * Math.sqrt(8));
+    expect(c?.detalhes.pesoVizinhos).toBeCloseTo(1 + s3, 4);
+    expect(c?.detalhes.notaPrevista).toBeCloseTo((1 * 5 + s3 * 1) / (1 + s3), 4);
+  });
+
+  it('dá o mesmo resultado que somar os vizinhos candidato a candidato', () => {
+    const universo = gerarProfissionais(3000);
+    let comVizinhos = 0;
+    for (const produtorId of ['produtor-0', 'produtor-7', 'produtor-19', 'sem-avaliacoes']) {
+      const projeto = criarProjeto({ produtorId, papeis: [{ papel: 'DIRETOR', peso: 1 }] });
+      const candidatos = universo.filter((p) => p.atuaComo('DIRETOR'));
+      const ranking = new FiltragemColaborativaStrategy().recomendar(candidatos, contexto(projeto, universo));
+      const esperado = previsoesDeReferencia(universo, produtorId);
+      expect(ranking).toHaveLength(candidatos.length);
+      for (const { profissional, detalhes } of ranking) {
+        const referencia = esperado(profissional);
+        expect([profissional.id, detalhes.notaPrevista, detalhes.pesoVizinhos]).toEqual([profissional.id, referencia.nota, referencia.peso]);
+        if (referencia.peso > 0) comVizinhos += 1;
+      }
+    }
+    expect(comVizinhos).toBeGreaterThan(100);
+  });
 });
+
+// Cálculo direto da filtragem colaborativa: para cada candidato percorre os vizinhos em ordem.
+function previsoesDeReferencia(universo: readonly Profissional[], produtor: string): (p: Profissional) => { nota: number; peso: number } {
+  const notas = new Map<string, Map<string, number>>();
+  let somaGeral = 0;
+  let quantidadeGeral = 0;
+  for (const profissional of universo) {
+    const porAutor = new Map<string, number[]>();
+    for (const { autorId, nota } of profissional.avaliacoes) {
+      porAutor.set(autorId, [...(porAutor.get(autorId) ?? []), nota]);
+      somaGeral += nota;
+      quantidadeGeral += 1;
+    }
+    for (const [autor, lista] of porAutor) {
+      if (!notas.has(autor)) notas.set(autor, new Map());
+      notas.get(autor)?.set(profissional.id, lista.reduce((a, b) => a + b, 0) / lista.length);
+    }
+  }
+  const mediaGeral = quantidadeGeral === 0 ? 3 : somaGeral / quantidadeGeral;
+  const minhas = notas.get(produtor);
+  const vizinhos: Array<[Map<string, number>, number]> = [];
+  for (const [outro, notasDoOutro] of notas) {
+    if (outro === produtor || !minhas) continue;
+    const a: Record<string, number> = {};
+    const b: Record<string, number> = {};
+    for (const [id, nota] of minhas) {
+      const notaB = notasDoOutro.get(id);
+      if (notaB === undefined) continue;
+      a[id] = nota - 3;
+      b[id] = notaB - 3;
+    }
+    const s = similaridadeCosseno(a, b);
+    if (s > 0) vizinhos.push([notasDoOutro, s]);
+  }
+  return (p) => {
+    let somaPonderada = 0;
+    let pesoTotal = 0;
+    for (const [notasDoVizinho, s] of vizinhos) {
+      const nota = notasDoVizinho.get(p.id);
+      if (nota === undefined) continue;
+      somaPonderada += s * nota;
+      pesoTotal += s;
+    }
+    const soma = p.avaliacoes.reduce((acc, a) => acc + a.nota, 0);
+    const bayesiana = (2 * mediaGeral + soma) / (2 + p.avaliacoes.length);
+    const previsao = minhas?.get(p.id) ?? (pesoTotal > 0 ? somaPonderada / pesoTotal : undefined) ?? bayesiana;
+    return { nota: arredondar(previsao), peso: arredondar(pesoTotal) };
+  };
+}
 
 describe('OrcamentoReduzidoStrategy', () => {
   it('descarta quem excede a fatia do orçamento ou tem reputação ruim comprovada', () => {
@@ -191,15 +272,15 @@ describe('OrcamentoReduzidoStrategy', () => {
   });
 });
 
-describe('EstrategiaRegistry', () => {
+describe('RegistroEstrategias', () => {
   it('resolve cada tipo para a estratégia concreta correspondente', () => {
-    const registry = EstrategiaRegistry.padrao();
-    expect(registry.obter('COSSENO')).toBeInstanceOf(CossenoStrategy);
-    expect(registry.obter('FILTRAGEM_COLABORATIVA')).toBeInstanceOf(FiltragemColaborativaStrategy);
-    expect(registry.obter('ORCAMENTO_REDUZIDO')).toBeInstanceOf(OrcamentoReduzidoStrategy);
+    const registro = RegistroEstrategias.padrao();
+    expect(registro.obter('COSSENO')).toBeInstanceOf(CossenoStrategy);
+    expect(registro.obter('FILTRAGEM_COLABORATIVA')).toBeInstanceOf(FiltragemColaborativaStrategy);
+    expect(registro.obter('ORCAMENTO_REDUZIDO')).toBeInstanceOf(OrcamentoReduzidoStrategy);
   });
 
   it('rejeita estratégia não registrada', () => {
-    expect(() => new EstrategiaRegistry().obter('COSSENO')).toThrow(ErroValidacao);
+    expect(() => new RegistroEstrategias().obter('COSSENO')).toThrow(ErroValidacao);
   });
 });

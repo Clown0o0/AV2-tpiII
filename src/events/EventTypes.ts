@@ -1,4 +1,5 @@
 import type { Convite } from '../domain/entities/Convite';
+import type { OrigemDosProfissionais } from '../domain/ports/FonteDeProfissionais';
 import type { PapelTecnico, Projeto, ResultadoAlteracao, TipoCaptacao } from '../domain/entities/Projeto';
 import type { Profissional } from '../domain/entities/Profissional';
 import type { Recomendacao } from '../domain/entities/Recomendacao';
@@ -40,7 +41,7 @@ export interface RecomendacaoGerada extends EventoBase {
   // Profissionais sugeridos nesta recomendação (recebem aviso de interesse do produtor).
   profissionaisSugeridos: readonly Profissional[];
   // Origem dos profissionais: repositório, cache de fallback ou indisponível.
-  fonteProfissionais: FonteProfissionais;
+  fonteProfissionais: OrigemDosProfissionais;
 }
 
 export interface MembroRejeitado extends EventoBase {
@@ -88,8 +89,6 @@ export interface IniciarFinanceiro extends EventoBase {
   pagamentos: Array<{ profissionalId: string; papel: PapelTecnico; valor: number }>;
 }
 
-export type FonteProfissionais = 'REPOSITORIO' | 'CACHE' | 'INDISPONIVEL';
-
 export interface MapaEventos {
   [EVENTOS.RECOMENDACAO_GERADA]: RecomendacaoGerada;
   [EVENTOS.MEMBRO_REJEITADO]: MembroRejeitado;
@@ -104,6 +103,9 @@ export interface MapaEventos {
 }
 
 // Evento entregue aos observadores: o nome discrimina o tipo do payload.
-export type EventoRecomendacao = {
-  [E in NomeEvento]: { readonly nome: E; readonly payload: MapaEventos[E] };
-}[NomeEvento];
+export interface EventoDe<E extends NomeEvento> {
+  readonly nome: E;
+  readonly payload: MapaEventos[E];
+}
+
+export type EventoRecomendacao = { [E in NomeEvento]: EventoDe<E> }[NomeEvento];

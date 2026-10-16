@@ -1,5 +1,6 @@
 import { lerListaTextos, lerTexto } from './detalhesProjeto';
 import { Projeto, type AjustesProjeto, type DadosProjeto, type DetalhesProjeto } from './Projeto';
+import type { Visitante } from './Visitante';
 
 export type DetalhesDocumentario = {
   tema: string;
@@ -35,5 +36,9 @@ export class ProjetoDocumentario extends Projeto {
       ...(this.temaInformado !== undefined ? { tema: this.temaInformado } : {}),
       entrevistados: [...this.entrevistados],
     };
+  }
+
+  override aceitar(visitante: Visitante): void {
+    visitante.visitarProjetoDocumentario(this);
   }
 }

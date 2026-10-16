@@ -9,6 +9,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "db:seed": "ts-node --transpile-only prisma/seed.ts",
+    "exemplos": "node exemplos/atualizar-datas.js",
     "postinstall": "prisma generate"
   },
   "author": "",

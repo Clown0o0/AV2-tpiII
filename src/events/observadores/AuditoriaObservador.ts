@@ -15,7 +15,7 @@ export interface RegistroAuditoria {
 }
 
 // Registra, como log estruturado, toda ação de produtores, profissionais e do sistema.
-export class AuditoriaObserver implements Observador {
+export class AuditoriaObservador implements Observador {
   readonly nome = 'auditoria';
   private readonly _registros: RegistroAuditoria[] = [];
 
@@ -29,13 +29,9 @@ export class AuditoriaObserver implements Observador {
   }
 
   atualizar(evento: EventoRecomendacao): void {
-    this.auditar(evento.nome, evento.payload);
-  }
-
-  private auditar(evento: NomeEvento, payload: EventoBase): void {
-    const { ator, projetoId, ocorridoEm, ...resto } = payload as EventoBase & Record<string, unknown>;
+    const { ator, projetoId, ocorridoEm, ...resto } = evento.payload;
     const registro: RegistroAuditoria = {
-      evento,
+      evento: evento.nome,
       ator,
       projetoId,
       ocorridoEm: ocorridoEm.toISOString(),
@@ -43,7 +39,7 @@ export class AuditoriaObserver implements Observador {
     };
     this._registros.push(registro);
     if (this._registros.length > this.limiteMemoria) this._registros.shift();
-    this.logger.info({ auditoria: true, ...registro }, `auditoria: ${evento}`);
+    this.logger.info({ auditoria: true, ...registro }, `auditoria: ${evento.nome}`);
   }
 }
 
@@ -57,10 +53,10 @@ export function resumir(dados: Record<string, unknown>): Record<string, unknown>
 function resumirValor(valor: unknown): unknown {
   if (valor instanceof Date) return valor.toISOString();
   if (Array.isArray(valor)) return valor.map(resumirValor);
-  if (valor !== null && typeof valor === 'object') {
-    const objeto = valor as Record<string, unknown>;
-    if (typeof objeto.id === 'string') return { id: objeto.id };
-    return resumir(objeto);
-  }
+  if (ehRegistro(valor)) return typeof valor.id === 'string' ? { id: valor.id } : resumir(valor);
   return valor;
+}
+
+function ehRegistro(valor: unknown): valor is Record<string, unknown> {
+  return valor !== null && typeof valor === 'object';
 }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { obterOuCalcular } from '../../compartilhado/memoizacao';
 import { ErroValidacao } from '../errors';
 import { Avaliacao } from './Avaliacao';
 import { Competencia, type VetorCompetencias } from './Competencia';
@@ -32,10 +33,10 @@ export class Profissional implements Elemento {
   readonly precoMin: number;
   readonly precoMax: number;
   readonly localizacao: string;
-  readonly disponibilidade: readonly Disponibilidade[];
-  readonly competencias: readonly Competencia[];
   readonly historicoProjetos: readonly string[];
-  readonly avaliacoes: readonly Avaliacao[];
+  private readonly _disponibilidade: readonly Disponibilidade[];
+  private readonly _competencias: readonly Competencia[];
+  private readonly _avaliacoes: readonly Avaliacao[];
   private readonly vetor: VetorCompetencias;
   private readonly chaveLocalizacao: string;
 
@@ -52,37 +53,55 @@ export class Profissional implements Elemento {
     this.precoMin = dados.precoMin;
     this.precoMax = dados.precoMax;
     this.localizacao = dados.localizacao.trim();
-    this.chaveLocalizacao = chaveLocalizacao(this.localizacao);
-    this.disponibilidade = dados.disponibilidade.map((d) => ({ inicio: new Date(d.inicio.getTime()), fim: new Date(d.fim.getTime()) }));
-    this.competencias = [...dados.competencias];
+    this.chaveLocalizacao = chaveDeComparacaoDaLocalizacao(this.localizacao);
+    this._disponibilidade = dados.disponibilidade.map(copiarJanela);
+    this._competencias = [...dados.competencias];
     this.historicoProjetos = [...(dados.historicoProjetos ?? [])];
-    this.avaliacoes = [...(dados.avaliacoes ?? [])];
-    this.vetor = Object.freeze(Object.fromEntries(this.competencias.map((c) => [c.nome, c.nivel])));
+    this._avaliacoes = [...(dados.avaliacoes ?? [])];
+    this.vetor = Object.freeze(Object.fromEntries(this._competencias.map((c) => [c.nome, c.nivel])));
+  }
+
+  get disponibilidade(): readonly Disponibilidade[] {
+    return this._disponibilidade.map(copiarJanela);
+  }
+
+  get competencias(): readonly Competencia[] {
+    return [...this._competencias];
+  }
+
+  get avaliacoes(): readonly Avaliacao[] {
+    return [...this._avaliacoes];
   }
 
   atuaComo(papel: PapelTecnico): boolean {
     return this.especialidades.includes(papel);
   }
 
-  // Disponível se alguma janela de disponibilidade cobre todo o intervalo pedido.
   disponivelEntre(inicio: Date, fim: Date): boolean {
-    const i = inicio.getTime();
-    const f = fim.getTime();
-    return this.disponibilidade.some((d) => d.inicio.getTime() <= i && d.fim.getTime() >= f);
+    return this._disponibilidade.some((janela) => janelaCobre(janela, inicio, fim));
   }
 
   vetorCompetencias(): VetorCompetencias {
     return this.vetor;
   }
 
-  // Média das notas recebidas, ou null quando não há avaliações.
   mediaAvaliacoes(): number | null {
-    if (this.avaliacoes.length === 0) return null;
-    return this.avaliacoes.reduce((soma, a) => soma + a.nota, 0) / this.avaliacoes.length;
+    if (this._avaliacoes.length === 0) return null;
+    return this._avaliacoes.reduce((soma, a) => soma + a.nota, 0) / this._avaliacoes.length;
+  }
+
+  // Média normalizada em 0..1; quem não tem avaliações recebe o valor informado.
+  reputacao(semAvaliacoes: number): number {
+    const media = this.mediaAvaliacoes();
+    return media === null ? semAvaliacoes : media / Avaliacao.NOTA_MAXIMA;
   }
 
   mesmaLocalizacao(localizacao: string): boolean {
-    return this.chaveLocalizacao === chaveLocalizacao(localizacao);
+    return this.chaveLocalizacao === chaveDeComparacaoDaLocalizacao(localizacao);
+  }
+
+  proximidadeDe(localizacao: string): 0 | 1 {
+    return this.mesmaLocalizacao(localizacao) ? 1 : 0;
   }
 
   aceitar(visitante: Visitante): void {
@@ -90,17 +109,23 @@ export class Profissional implements Elemento {
   }
 }
 
-// Compara localizações ignorando maiúsculas, minúsculas e acentos (localeCompare com sensitivity 'base'
-// é lento demais para rodar a cada candidato).
-const CHAVES_LOCALIZACAO = new Map<string, string>();
-const LIMITE_CHAVES_LOCALIZACAO = 1000;
+function copiarJanela(janela: Disponibilidade): Disponibilidade {
+  return { inicio: new Date(janela.inicio.getTime()), fim: new Date(janela.fim.getTime()) };
+}
 
-function chaveLocalizacao(texto: string): string {
-  let chave = CHAVES_LOCALIZACAO.get(texto);
-  if (chave === undefined) {
-    chave = texto.trim().normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-    if (CHAVES_LOCALIZACAO.size >= LIMITE_CHAVES_LOCALIZACAO) CHAVES_LOCALIZACAO.clear();
-    CHAVES_LOCALIZACAO.set(texto, chave);
-  }
-  return chave;
+function janelaCobre(janela: Disponibilidade, inicio: Date, fim: Date): boolean {
+  return janela.inicio.getTime() <= inicio.getTime() && janela.fim.getTime() >= fim.getTime();
+}
+
+// Cache porque a comparação roda para cada candidato e localeCompare com acentos é lento.
+const CACHE_CHAVES_LOCALIZACAO = new Map<string, string>();
+const LIMITE_CACHE_CHAVES_LOCALIZACAO = 1000;
+
+function chaveDeComparacaoDaLocalizacao(texto: string): string {
+  if (CACHE_CHAVES_LOCALIZACAO.size >= LIMITE_CACHE_CHAVES_LOCALIZACAO) CACHE_CHAVES_LOCALIZACAO.clear();
+  return obterOuCalcular(CACHE_CHAVES_LOCALIZACAO, texto, () => removerAcentos(texto.trim()).toLowerCase());
+}
+
+function removerAcentos(texto: string): string {
+  return texto.normalize('NFD').replace(/\p{M}/gu, '');
 }

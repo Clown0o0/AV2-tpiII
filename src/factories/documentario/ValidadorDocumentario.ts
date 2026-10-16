@@ -1,11 +1,13 @@
-import type { Projeto } from '../../domain/entities/Projeto';
-import { ProjetoDocumentario } from '../../domain/entities/ProjetoDocumentario';
-import { ValidacaoConsistenciaVisitor } from '../../visitors/ValidacaoConsistenciaVisitor';
+import type { ProjetoDocumentario } from '../../domain/entities/ProjetoDocumentario';
+import { ValidadorPapelObrigatorio } from '../../visitors/ValidadorPapelObrigatorio';
 
-// Regra do tipo: documentário precisa de roteirista (pesquisa e roteiro das entrevistas).
-export class ValidadorDocumentario extends ValidacaoConsistenciaVisitor {
-  protected override errosDoTipo(projeto: Projeto): string[] {
-    if (!(projeto instanceof ProjetoDocumentario)) return [`Projeto ${projeto.id} não é um documentário`];
-    return projeto.papeis.some((p) => p.papel === 'ROTEIRISTA') ? [] : ['Documentário exige o papel ROTEIRISTA'];
+export class ValidadorDocumentario extends ValidadorPapelObrigatorio {
+  constructor(inicioDaJanelaDeDisponibilidade?: Date) {
+    super('ROTEIRISTA', 'Documentário exige o papel ROTEIRISTA', inicioDaJanelaDeDisponibilidade);
+  }
+
+  override visitarProjetoDocumentario(projeto: ProjetoDocumentario): void {
+    super.visitarProjetoDocumentario(projeto);
+    this.aplicarRegraAo(projeto);
   }
 }

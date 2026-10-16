@@ -2,9 +2,9 @@ import { Convite } from '../../../src/domain/entities/Convite';
 import { MembroRecomendado, Recomendacao } from '../../../src/domain/entities/Recomendacao';
 import { EVENTOS, type EventoConvite, type RecomendacaoGerada } from '../../../src/events/EventTypes';
 import { RecomendacaoEventEmitter, type Observador } from '../../../src/events/RecomendacaoEventEmitter';
-import { AuditoriaObserver, resumir } from '../../../src/events/observers/AuditoriaObserver';
-import { EmailObserver } from '../../../src/events/observers/EmailObserver';
-import { MensagemInternaObserver } from '../../../src/events/observers/MensagemInternaObserver';
+import { AuditoriaObservador, resumir } from '../../../src/events/observadores/AuditoriaObservador';
+import { EmailObservador } from '../../../src/events/observadores/EmailObservador';
+import { MensagemInternaObservador } from '../../../src/events/observadores/MensagemInternaObservador';
 import { criarProfissional, criarProjeto } from '../../support/fixtures';
 import { LoggerMemoria } from '../../support/InMemoryRepositories';
 
@@ -45,9 +45,9 @@ function montar() {
   const falhas: Array<{ evento: string; observador: string }> = [];
   const emitter = new RecomendacaoEventEmitter((_erro, evento, observador) => falhas.push({ evento, observador }));
   const logger = new LoggerMemoria();
-  const email = new EmailObserver(logger);
-  const mensagens = new MensagemInternaObserver(logger);
-  const auditoria = new AuditoriaObserver(logger);
+  const email = new EmailObservador(logger);
+  const mensagens = new MensagemInternaObservador(logger);
+  const auditoria = new AuditoriaObservador(logger);
   emitter.registrar(email, mensagens, auditoria);
   return { emitter, email, mensagens, auditoria, logger, falhas };
 }
@@ -225,7 +225,7 @@ describe('Observer — observadores reagem de forma independente ao mesmo evento
 
   it('auditoria mantém apenas os registros mais recentes em memória', async () => {
     const emitter = new RecomendacaoEventEmitter();
-    const auditoria = new AuditoriaObserver(new LoggerMemoria(), 2);
+    const auditoria = new AuditoriaObservador(new LoggerMemoria(), 2);
     emitter.registrar(auditoria);
     for (let i = 0; i < 3; i++) emitter.publicar(EVENTOS.RECOMENDACAO_GERADA, eventoRecomendacao());
     await emitter.aguardarPendentes();
@@ -252,8 +252,8 @@ describe('Observer — observadores reagem de forma independente ao mesmo evento
 
   it('observadores funcionam sem logger', async () => {
     const emitter = new RecomendacaoEventEmitter();
-    const email = new EmailObserver();
-    const mensagens = new MensagemInternaObserver();
+    const email = new EmailObservador();
+    const mensagens = new MensagemInternaObservador();
     emitter.registrar(email, mensagens);
     emitter.publicar(EVENTOS.RECOMENDACAO_GERADA, eventoRecomendacao());
     await emitter.aguardarPendentes();

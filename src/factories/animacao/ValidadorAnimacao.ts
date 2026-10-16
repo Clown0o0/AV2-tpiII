@@ -1,11 +1,13 @@
-import type { Projeto } from '../../domain/entities/Projeto';
-import { ProjetoAnimacao } from '../../domain/entities/ProjetoAnimacao';
-import { ValidacaoConsistenciaVisitor } from '../../visitors/ValidacaoConsistenciaVisitor';
+import type { ProjetoAnimacao } from '../../domain/entities/ProjetoAnimacao';
+import { ValidadorPapelObrigatorio } from '../../visitors/ValidadorPapelObrigatorio';
 
-// Regra do tipo: animação precisa de alguém de efeitos visuais.
-export class ValidadorAnimacao extends ValidacaoConsistenciaVisitor {
-  protected override errosDoTipo(projeto: Projeto): string[] {
-    if (!(projeto instanceof ProjetoAnimacao)) return [`Projeto ${projeto.id} não é uma animação`];
-    return projeto.papeis.some((p) => p.papel === 'EFEITOS_VISUAIS') ? [] : ['Animação exige o papel EFEITOS_VISUAIS'];
+export class ValidadorAnimacao extends ValidadorPapelObrigatorio {
+  constructor(inicioDaJanelaDeDisponibilidade?: Date) {
+    super('EFEITOS_VISUAIS', 'Animação exige o papel EFEITOS_VISUAIS', inicioDaJanelaDeDisponibilidade);
+  }
+
+  override visitarProjetoAnimacao(projeto: ProjetoAnimacao): void {
+    super.visitarProjetoAnimacao(projeto);
+    this.aplicarRegraAo(projeto);
   }
 }

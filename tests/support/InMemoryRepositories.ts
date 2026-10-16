@@ -3,7 +3,9 @@ import type { Profissional } from '../../src/domain/entities/Profissional';
 import type { Projeto } from '../../src/domain/entities/Projeto';
 import type { Recomendacao } from '../../src/domain/entities/Recomendacao';
 import type { ProfissionalRepository } from '../../src/domain/ports/ProfissionalRepository';
+import type { ConviteRepository } from '../../src/domain/ports/ConviteRepository';
 import type { ProjetoRepository } from '../../src/domain/ports/ProjetoRepository';
+import type { RecomendacaoRepository } from '../../src/domain/ports/RecomendacaoRepository';
 
 /** Substitui o banco nos testes. `indisponivel = true` simula queda do repositório. */
 export class InMemoryProfissionalRepository implements ProfissionalRepository {
@@ -30,7 +32,7 @@ export class InMemoryProfissionalRepository implements ProfissionalRepository {
   }
 }
 
-export class InMemoryProjetoRepository implements ProjetoRepository {
+export class InMemoryProjetoRepository implements ProjetoRepository, RecomendacaoRepository, ConviteRepository {
   readonly projetos = new Map<string, Projeto>();
   readonly recomendacoes = new Map<string, Recomendacao>();
   readonly convites = new Map<string, Convite>();

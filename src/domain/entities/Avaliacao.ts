@@ -22,7 +22,7 @@ export class Avaliacao {
   readonly projetoId: string | null;
   readonly nota: number;
   readonly comentario: string | null;
-  readonly criadaEm: Date;
+  private readonly _criadaEm: Date;
 
   constructor(dados: DadosAvaliacao) {
     if (!Number.isInteger(dados.nota) || dados.nota < Avaliacao.NOTA_MINIMA || dados.nota > Avaliacao.NOTA_MAXIMA) {
@@ -34,6 +34,10 @@ export class Avaliacao {
     this.projetoId = dados.projetoId ?? null;
     this.nota = dados.nota;
     this.comentario = dados.comentario ?? null;
-    this.criadaEm = dados.criadaEm ?? new Date();
+    this._criadaEm = new Date((dados.criadaEm ?? new Date()).getTime());
+  }
+
+  get criadaEm(): Date {
+    return new Date(this._criadaEm.getTime());
   }
 }

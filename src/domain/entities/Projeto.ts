@@ -31,10 +31,10 @@ export const PERFIL_PADRAO_POR_PAPEL: Readonly<Record<PapelTecnico, VetorCompete
 };
 
 export interface PapelRequerido {
-  papel: PapelTecnico;
+  readonly papel: PapelTecnico;
   // Peso de importância relativa do papel (> 0).
-  peso: number;
-  competenciasDesejadas?: VetorCompetencias;
+  readonly peso: number;
+  readonly competenciasDesejadas?: VetorCompetencias;
 }
 
 export interface DadosProjeto {
@@ -48,7 +48,7 @@ export interface DadosProjeto {
   dataEntrega: Date;
   tipoCaptacao: TipoCaptacao;
   localizacao: string;
-  papeis: PapelRequerido[];
+  papeis: readonly PapelRequerido[];
   estrategia?: TipoEstrategia;
   // Atributos específicos do tipo; cada subclasse lê e valida os seus (a ficção não tem nenhum).
   detalhes?: DetalhesProjeto | null;
@@ -87,8 +87,8 @@ export class Projeto implements Elemento {
   readonly duracaoEstimadaMin: number;
   readonly tipoCaptacao: TipoCaptacao;
   readonly localizacao: string;
-  readonly papeis: readonly PapelRequerido[];
-  readonly criadoEm: Date;
+  private readonly _papeis: readonly PapelRequerido[];
+  private readonly _criadoEm: Date;
   private _orcamentoTotal: number;
   private _dataEntrega: Date;
   private _estrategia: TipoEstrategia;
@@ -104,15 +104,19 @@ export class Projeto implements Elemento {
     this.duracaoEstimadaMin = dados.duracaoEstimadaMin;
     this.tipoCaptacao = dados.tipoCaptacao;
     this.localizacao = dados.localizacao.trim();
-    this.papeis = dados.papeis.map((p) => ({
-      papel: p.papel,
-      peso: p.peso,
-      ...(p.competenciasDesejadas ? { competenciasDesejadas: Competencia.normalizarVetor(p.competenciasDesejadas) } : {}),
-    }));
-    this.criadoEm = dados.criadoEm ?? new Date();
+    this._papeis = dados.papeis.map(normalizarPapelRequerido);
+    this._criadoEm = new Date((dados.criadoEm ?? new Date()).getTime());
     this._orcamentoTotal = dados.orcamentoTotal;
     this._dataEntrega = new Date(dados.dataEntrega.getTime());
     this._estrategia = dados.estrategia ?? 'COSSENO';
+  }
+
+  get papeis(): readonly PapelRequerido[] {
+    return this._papeis.map(copiarPapelRequerido);
+  }
+
+  get criadoEm(): Date {
+    return new Date(this._criadoEm.getTime());
   }
 
   get orcamentoTotal(): number {
@@ -150,7 +154,7 @@ export class Projeto implements Elemento {
       dataEntrega: new Date(this._dataEntrega.getTime()),
       localizacao: this.localizacao,
       estrategia: this._estrategia,
-      papeis: [...this.papeis],
+      papeis: this.papeis,
       ...informados,
       tipoCaptacao: this.tipoCaptacao,
       detalhes: { ...this.detalhesParaClone(), ...ajustes.detalhes },
@@ -169,7 +173,7 @@ export class Projeto implements Elemento {
   }
 
   papelRequerido(papel: PapelTecnico): PapelRequerido {
-    const encontrado = this.papeis.find((p) => p.papel === papel);
+    const encontrado = this._papeis.find((p) => p.papel === papel);
     if (!encontrado) throw new ErroValidacao(`Papel ${papel} não é requerido pelo projeto`);
     return encontrado;
   }
@@ -205,10 +209,7 @@ export class Projeto implements Elemento {
   }
 
   private static validar(dados: DadosProjeto): void {
-    if (!dados.titulo?.trim()) throw new ErroValidacao('Título do projeto é obrigatório');
-    if (!dados.produtorId?.trim()) throw new ErroValidacao('Produtor do projeto é obrigatório');
-    if (!dados.genero?.trim()) throw new ErroValidacao('Gênero da obra é obrigatório');
-    if (!dados.localizacao?.trim()) throw new ErroValidacao('Localização do projeto é obrigatória');
+    Projeto.validarTextosObrigatorios(dados);
     if (!Number.isFinite(dados.duracaoEstimadaMin) || dados.duracaoEstimadaMin <= 0) {
       throw new ErroValidacao('Duração estimada deve ser positiva');
     }
@@ -217,9 +218,20 @@ export class Projeto implements Elemento {
     }
     Projeto.validarOrcamento(dados.orcamentoTotal);
     Projeto.validarData(dados.dataEntrega);
-    if (!dados.papeis?.length) throw new ErroValidacao('O projeto deve exigir ao menos um papel técnico');
+    Projeto.validarPapeis(dados.papeis);
+  }
+
+  private static validarTextosObrigatorios(dados: DadosProjeto): void {
+    if (!dados.titulo?.trim()) throw new ErroValidacao('Título do projeto é obrigatório');
+    if (!dados.produtorId?.trim()) throw new ErroValidacao('Produtor do projeto é obrigatório');
+    if (!dados.genero?.trim()) throw new ErroValidacao('Gênero da obra é obrigatório');
+    if (!dados.localizacao?.trim()) throw new ErroValidacao('Localização do projeto é obrigatória');
+  }
+
+  private static validarPapeis(papeis: readonly PapelRequerido[] | undefined): void {
+    if (!papeis?.length) throw new ErroValidacao('O projeto deve exigir ao menos um papel técnico');
     const vistos = new Set<PapelTecnico>();
-    for (const papel of dados.papeis) {
+    for (const papel of papeis) {
       if (!PAPEIS_TECNICOS.includes(papel.papel)) throw new ErroValidacao(`Papel técnico inválido: ${String(papel.papel)}`);
       if (vistos.has(papel.papel)) throw new ErroValidacao(`Papel ${papel.papel} informado mais de uma vez`);
       if (!Number.isFinite(papel.peso) || papel.peso <= 0) throw new ErroValidacao(`Peso do papel ${papel.papel} deve ser positivo`);
@@ -231,7 +243,24 @@ export class Projeto implements Elemento {
     if (!Number.isFinite(orcamento) || orcamento <= 0) throw new ErroValidacao('Orçamento total deve ser positivo');
   }
 
+  // O banco só grava anos de até 4 dígitos.
   private static validarData(data: Date): void {
-    if (!(data instanceof Date) || Number.isNaN(data.getTime())) throw new ErroValidacao('Data de entrega inválida');
+    if (!(data instanceof Date) || Number.isNaN(data.getTime()) || data.getUTCFullYear() > 9999) {
+      throw new ErroValidacao('Data de entrega inválida');
+    }
   }
+}
+
+function normalizarPapelRequerido(papel: PapelRequerido): PapelRequerido {
+  const { competenciasDesejadas } = papel;
+  return {
+    papel: papel.papel,
+    peso: papel.peso,
+    ...(competenciasDesejadas ? { competenciasDesejadas: Competencia.normalizarVetor(competenciasDesejadas) } : {}),
+  };
+}
+
+function copiarPapelRequerido(papel: PapelRequerido): PapelRequerido {
+  const { competenciasDesejadas } = papel;
+  return { ...papel, ...(competenciasDesejadas ? { competenciasDesejadas: { ...competenciasDesejadas } } : {}) };
 }

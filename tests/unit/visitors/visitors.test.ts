@@ -5,6 +5,7 @@ import { CompatibilidadeEquipeVisitor } from '../../../src/visitors/Compatibilid
 import { EstruturaEquipe } from '../../../src/visitors/ProjetoVisitor';
 import { RelatorioVisitor } from '../../../src/visitors/RelatorioVisitor';
 import { ValidacaoConsistenciaVisitor } from '../../../src/visitors/ValidacaoConsistenciaVisitor';
+import { VisitanteBase } from '../../../src/visitors/VisitanteBase';
 import { criarProfissional, criarProjeto, DATA_REFERENCIA } from '../../support/fixtures';
 
 function membro(papel: MembroRecomendado['papel'], profissionalId: string, custo: number, score = 0.9) {
@@ -64,13 +65,24 @@ describe('Visitor — resultados diferentes sobre a mesma estrutura, sem alterar
     const { projeto, recomendacao, profissionais } = estruturaCompleta();
     recomendacao.rejeitar('EDITOR');
     const visitas: string[] = [];
-    new EstruturaEquipe(projeto, recomendacao, profissionais).aceitar({
-      visitarProjeto: () => visitas.push('projeto'),
-      visitarRecomendacao: () => visitas.push('recomendacao'),
-      visitarMembro: (m) => visitas.push(`membro:${m.papel}`),
-      visitarProfissional: (p) => visitas.push(`profissional:${p.id}`),
-      resultado: () => visitas,
-    });
+    class OrdemDeVisita extends VisitanteBase<string[]> {
+      override visitarProjeto(): void {
+        visitas.push('projeto');
+      }
+      override visitarRecomendacao(): void {
+        visitas.push('recomendacao');
+      }
+      override visitarMembro(m: MembroRecomendado): void {
+        visitas.push(`membro:${m.papel}`);
+      }
+      override visitarProfissional(p: Profissional): void {
+        visitas.push(`profissional:${p.id}`);
+      }
+      resultado(): string[] {
+        return visitas;
+      }
+    }
+    new EstruturaEquipe(projeto, recomendacao, profissionais).aceitar(new OrdemDeVisita());
     expect(visitas).toEqual([
       'projeto',
       'recomendacao',
