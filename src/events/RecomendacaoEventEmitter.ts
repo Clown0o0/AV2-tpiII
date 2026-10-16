@@ -1,3 +1,4 @@
+// submarino
 import { EventEmitter } from 'node:events';
 import type { EventoDe, EventoRecomendacao, MapaEventos, NomeEvento } from './EventTypes';
 import type { PublicadorEventos } from './PublicadorEventos';

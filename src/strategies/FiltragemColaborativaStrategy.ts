@@ -1,3 +1,4 @@
+// submarino
 import { obterOuCalcular } from '../compartilhado/memoizacao';
 import { Avaliacao } from '../domain/entities/Avaliacao';
 import { similaridadeCosseno } from '../domain/entities/Competencia';
