@@ -2,16 +2,7 @@
 
 [![CI](https://github.com/Clown0o0/AV2-tpiII/actions/workflows/ci.yml/badge.svg)](https://github.com/Clown0o0/AV2-tpiII/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-v24.15.0-339933?style=flat&logo=nodedotjs&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-v5.9.3-3178C6?style=flat&logo=typescript&logoColor=white)
-![Fastify](https://img.shields.io/badge/Fastify-v5.12.5-000000?style=flat&logo=fastify&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-v18.6-4169E1?style=flat&logo=postgresql&logoColor=white)
-![Prisma](https://img.shields.io/badge/Prisma-v6.19.3-2D3748?style=flat&logo=prisma&logoColor=white)
-![Jest](https://img.shields.io/badge/Jest-v30.5.2-C21325?style=flat&logo=jest&logoColor=white)
-![ts-jest](https://img.shields.io/badge/ts--jest-v29.4.14-C21325?style=flat&logo=jest&logoColor=white)
-![ts-node](https://img.shields.io/badge/ts--node-v10.9.2-3178C6?style=flat)
-![ts-node-dev](https://img.shields.io/badge/ts--node--dev-v2.0.0-3178C6?style=flat)
-![@types/node](https://img.shields.io/badge/%40types%2Fnode-v24.13.6-3178C6?style=flat&logo=typescript&logoColor=white)
-![@types/jest](https://img.shields.io/badge/%40types%2Fjest-v30.0.0-3178C6?style=flat&logo=typescript&logoColor=white)
 
 Microsserviço da plataforma cinebridge que recebe um projeto audiovisual e recomenda uma equipe técnica dentro do orçamento e do prazo.
 
